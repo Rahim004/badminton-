@@ -99,6 +99,30 @@ def run_viewport(p, url, name, w, h, mobile):
         check(cmds[:3] == ['clear', 'smash', 'net'], f'{name}: свайпы → {cmds}')
         page.evaluate('__game.game.cfg.assist = true')
 
+    if not mobile:
+        # Клавиатура: пробел — подача, A — движение, Esc — пауза.
+        page.evaluate('__game.game.cfg.assist = false')
+        st0 = page.evaluate('__game.state')
+        if st0['serverTeam'] == 0:
+            page.keyboard.press('Space'); page.wait_for_timeout(200)
+            check(page.evaluate('__game.state.rally.hits') >= 1, 'desktop: пробел — подача')
+        page.evaluate('__game.runUntil(s => s.phase === "rally", 120*10)')
+        xa = page.evaluate('[__game.state.players[0].x, __game.state.players[0].y]')
+        page.keyboard.down('KeyA'); page.wait_for_timeout(400); page.keyboard.up('KeyA')
+        xb = page.evaluate('[__game.state.players[0].x, __game.state.players[0].y]')
+        check(abs(xa[1] - xb[1]) > 0.3 or abs(xa[0] - xb[0]) > 0.3, f'desktop: клавиша A двигает игрока {xa} → {xb}')
+        page.keyboard.press('Escape'); page.wait_for_timeout(150)
+        check(page.is_visible('#pause'), 'desktop: Esc — пауза')
+        page.screenshot(path=f'{SHOTS}/{name}-pause.png')
+        page.click('#resume'); page.wait_for_timeout(100)
+        check(not page.is_visible('#pause'), 'desktop: продолжить')
+        page.evaluate('__game.game.cfg.assist = true')
+        # Производительность отрисовки.
+        ms = page.evaluate('''(() => { const r = __game.renderer, g = __game.game; const t0 = performance.now();
+            for (let i = 0; i < 200; i++) r.render(g, __game.input, 1/60); return (performance.now() - t0) / 200; })()''')
+        print(f'  render: {ms:.2f} мс/кадр')
+        check(ms < 8, f'desktop: отрисовка быстрая ({ms:.2f} мс)')
+
     # Игра ИИ за человека, скриншоты розыгрыша.
     page.evaluate('__game.forceAI(true)')
     page.wait_for_timeout(2500)
@@ -109,6 +133,17 @@ def run_viewport(p, url, name, w, h, mobile):
     page.wait_for_timeout(100)
     page.screenshot(path=f'{SHOTS}/{name}-highball.png')
     page.evaluate('__game.freeze(false)')
+    # Смэш крупным планом: останавливаемся сразу после смэша.
+    page.evaluate('__game.freeze(true); window.__sm = false; __game.game.on("hit", e => { if (e.type === "smash") window.__sm = true; })')
+    page.evaluate('__game.runUntil(s => window.__sm && s.shuttle.state === "flight" && Math.abs(s.shuttle.x) < 2.5, 120*120)')
+    page.wait_for_timeout(80)
+    page.screenshot(path=f'{SHOTS}/{name}-smash.png')
+    page.evaluate('__game.freeze(false)')
+    # Конец матча → экран итогов.
+    page.evaluate('__game.freeze(true); __game.startMatch({mode: "singles", difficulty: "novice", format: "short", seed: 3}); __game.forceAI(true); __game.runUntil(s => s.phase === "over", 120*60*20); __game.freeze(false)')
+    page.wait_for_timeout(1300)
+    check(page.is_visible('#over'), f'{name}: экран конца матча')
+    page.screenshot(path=f'{SHOTS}/{name}-over.png')
     # Пара 2x2.
     page.evaluate('__game.startMatch({mode: "doubles", difficulty: "pro"}); __game.forceAI(true)')
     page.wait_for_timeout(3000)

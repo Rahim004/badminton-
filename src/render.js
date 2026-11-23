@@ -125,6 +125,7 @@ export function createRenderer(canvas) {
       const sh = game.shuttle;
       const human = e.player.controller === 'human';
       R.flashes.push({ x: sh.x, y: sh.y, z: sh.z, t: 0, perfect: e.timing === 'perfect', color: e.player.color });
+      if (R.flashes.length > 4) R.flashes.shift();
       if (e.type === 'smash' && e.speed > 40) {
         R.shake = Math.min(1, 0.35 + (e.speed - 40) / 40);
         if (human || e.speed > 47) banner('СМЭШ!', null, '#ffd23f', 0.9, true);
@@ -135,7 +136,7 @@ export function createRenderer(canvas) {
       }
     });
     game.on('whiff', e => { if (e.player.controller === 'human') banner('Мимо!', null, '#ffb4a2', 0.7, false); });
-    game.on('land', e => { R.landMarks.push({ x: e.x, y: e.y, t: 0, in: e.in }); });
+    game.on('land', e => { R.landMarks.push({ x: e.x, y: e.y, t: 0, in: e.in }); if (R.landMarks.length > 3) R.landMarks.shift(); });
     game.on('point', e => {
       const txt = { in: 'Очко!', out: 'Аут!', net: 'Сетка!', serveFault: 'Ошибка подачи' }[e.reason];
       const humanTeam = game.human ? game.human.team : 0;
@@ -150,8 +151,9 @@ export function createRenderer(canvas) {
   };
 
   function banner(text, sub, color, life, big) {
-    R.banners = R.banners.filter(b => !(big && b.big));
+    R.banners = R.banners.filter(b => !(big && b.big) && b.text !== text);
     R.banners.push({ text, sub, color, t: 0, life, big });
+    if (R.banners.length > 3) R.banners.splice(0, R.banners.length - 3);
   }
 
   function teamName(game, team) {
@@ -366,7 +368,7 @@ export function createRenderer(canvas) {
     let dx = 1, dy = 0, dz = 0;
     if (sp > 0.3) { dx = sh.vx / sp; dy = sh.vy / sp; dz = sh.vz / sp; }
     else if (sh.state === 'held') { dx = 0; dy = 0; dz = -1; }
-    const L = 0.085;
+    const L = 0.12; // визуально крупнее настоящего (7 см), чтобы было видно на телефоне
     const head = project(sh.x, sh.y, Math.max(0.02, sh.z));
     const tail = project(sh.x - dx * L, sh.y - dy * L, Math.max(0.02, sh.z - dz * L));
     const sc = head.s;
@@ -376,7 +378,7 @@ export function createRenderer(canvas) {
     ctx.save();
     ctx.translate(head.x, head.y);
     ctx.rotate(ang);
-    const wid = Math.max(3.2, 0.035 * sc) * minScale;
+    const wid = Math.max(4, 0.055 * sc) * minScale;
     // Юбка из перьев (усечённый конус).
     ctx.fillStyle = 'rgba(255,255,255,0.92)';
     ctx.beginPath();

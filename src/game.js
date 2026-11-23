@@ -30,12 +30,15 @@
  *   game.snapshot()             плоский объект состояния для тестов
  *   game.human                  игрок-человек (или null)
  */
-import { PHYSICS, PLAYER, FLOW, TIMING, MATCH_FORMATS, DIFFICULTY, COURT, CHARACTER_ORDER } from './config.js';
-import { createShuttle, stepShuttle, predictLanding } from './physics.js';
+import { PHYSICS, PLAYER, FLOW, TIMING, MATCH_FORMATS, DIFFICULTY, COURT, CHARACTER_ORDER, DOUBLES_MOD } from './config.js';
+import { createShuttle, stepShuttle, predictLanding, predictTrajectory } from './physics.js';
 import { createMatch, servingInfo, awardRally, judgeLanding, serviceBox, halfWidth } from './rules.js';
 import { createPlayer, updatePlayer, placePlayer, cancelSwing, resolveShotType, requestSwing } from './player.js';
 import { planShot } from './shots.js';
-import { createBrain, updateBrain, chooseServe } from './ai.js';
+import { createBrain, updateBrain, chooseServe, interceptPlan } from './ai.js';
+
+/** Базовая вероятность грубой ошибки человека (растёт при плохом тайминге/давлении). */
+const HUMAN_BLUNDER = 0.06;
 
 /** Детерминированный ГПСЧ (mulberry32). */
 export function makeRng(seed) {
@@ -116,9 +119,13 @@ function startMatch(game, o) {
     difficulty: p.controller === 'human' ? 'legend' : p.team === 0 ? partnerDifficulty(cfg.difficulty) : cfg.difficulty,
     role: p.controller === 'human' ? (game.aiControlsHuman ? 'ai' : 'assist') : 'ai',
   }));
+  if (cfg.mode === 'doubles') {
+    for (const b of game.brains) b.diff = { ...b.diff, blunder: b.diff.blunder * DOUBLES_MOD.blunder, wrongFoot: b.diff.wrongFoot * DOUBLES_MOD.wrongFoot };
+  }
   game.stats = { rallies: [], faults: { out: 0, net: 0, serveFault: 0 }, winners: 0, shots: {}, perfect: 0, hits: 0, whiffs: 0, points: [0, 0] };
   game.time = 0;
   game.lastPoint = null;
+  game.humanPressure = 1;
   enterServe(game);
 }
 
@@ -285,7 +292,7 @@ function doHit(game, p) {
   if (!plan) { w.whiff = true; game.stats.whiffs++; game.emit('whiff', { player: p }); return; }
   let { vx, vy, vz } = plan.launch;
   // Грубая ошибка: недобор (в сетку) или перебор (в аут). Чаще при плохом тайминге.
-  const blunderP = isAI ? diff.blunder * (0.4 + 2.5 * (1 - q)) : Math.max(0, 0.4 - q) * 0.5;
+  const blunderP = (isAI ? diff.blunder : HUMAN_BLUNDER) * (0.4 + 2.5 * (1 - q));
   if (game.rng() < blunderP) {
     const short = plan.type === 'net' || plan.type === 'drop' || game.rng() < 0.5;
     const f = short ? 0.72 + game.rng() * 0.12 : 1.08 + game.rng() * 0.08;
@@ -293,10 +300,23 @@ function doHit(game, p) {
     if (!short) vy += (game.rng() - 0.5) * 3;
   }
   launch(game, p, vx, vy, vz, plan.type, plan.target);
+  updateHumanPressure(game);
   game.stats.hits++;
   if (w.timing === 'perfect') game.stats.perfect++;
   w.resolvedType = plan.type;
   game.emit('hit', { player: p, type: plan.type, quality: q, timing: w.timing, speed: plan.launch.speed, jump: w.jump, lunge: w.lunge, target: plan.target });
+}
+
+/**
+ * Давление на человека считается так же, как у ИИ: запас времени до лучшей
+ * точки перехвата при типичной реакции человека (0.2 с).
+ */
+function updateHumanPressure(game) {
+  const h = game.human;
+  if (!h || game.shuttle.lastHitTeam === h.team) return;
+  const traj = predictTrajectory(game.shuttle, 4, 1);
+  const pl = interceptPlan(h, traj, 0.2, game);
+  game.humanPressure = Math.max(0.4, Math.min(1, 0.45 + (pl ? pl.maxSlack : 0) * 2.2));
 }
 
 function netClearFor(type, diff) {
@@ -379,7 +399,7 @@ function step(game, dt) {
         else if (!p.swing && p.action !== 'recover' && p.action !== 'whiff') {
           const ps = game.pendingShot;
           game.pendingShot = null;
-          requestSwing(p, sh, ps.type, ps.aimY);
+          requestSwing(p, sh, ps.type, ps.aimY, { pressure: game.humanPressure ?? 1 });
         }
       }
     } else {

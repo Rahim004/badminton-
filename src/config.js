@@ -111,6 +111,12 @@ export const DIFFICULTY = {
   pro:     { whiff: 0.006, wrongFoot: 0.2, label: 'Профи', reaction: 0.17, speed: 0.98, aimError: 0.24, blunder: 0.09, posError: 0.14, judge: 0.25, timing: 0.025, smashRate: 0.55, dropRate: 0.35, netClearBonus: 0.1, anticipation: 0.6 },
   legend:  { whiff: 0.0, wrongFoot: 0.13, label: 'Легенда', reaction: 0.12, speed: 1.06, aimError: 0.15, blunder: 0.055, posError: 0.08, judge: 0.12, timing: 0.015, smashRate: 0.65, dropRate: 0.38, netClearBonus: 0.06, anticipation: 0.85 },
 };
+/** Автобег-помощник человека: реакция и скорость (слабее, чем ручное управление). */
+export const ASSIST = { reaction: 0.24, speed: 0.9 };
+
+/** Поправки ИИ для пары (двое защищают корт — без них розыгрыши слишком длинные). */
+export const DOUBLES_MOD = { blunder: 1.8, wrongFoot: 1.7 };
+
 export const DIFFICULTY_ORDER = ['novice', 'amateur', 'pro', 'legend'];
 
 /**

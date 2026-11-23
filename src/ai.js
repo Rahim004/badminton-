@@ -21,7 +21,7 @@
  *   formationFor(game, team) -> 'front-back' | 'side-by-side'
  *   interceptPlan(player, traj, reactionLeft, game) -> Plan | null
  */
-import { DIFFICULTY, PLAYER, TIMING, COURT } from './config.js';
+import { DIFFICULTY, PLAYER, TIMING, COURT, ASSIST } from './config.js';
 import { predictTrajectory } from './physics.js';
 import { steerTo, requestSwing, maxSpeed, resolveShotType } from './player.js';
 import { chooseTarget } from './shots.js';
@@ -200,7 +200,7 @@ export function updateBrain(brain, game, dt) {
   const p = brain.player;
   const sh = game.shuttle;
   const d = brain.diff;
-  p.speedMul = brain.role === 'ai' && p.controller !== 'human' ? d.speed : 1;
+  p.speedMul = p.controller === 'human' ? (brain.role === 'assist' ? ASSIST.speed : 1) : d.speed;
   if (game.phase !== 'rally') { p.input.mx = p.input.my = 0; brain.plan = null; return; }
 
   const incoming = sh.state === 'flight' && sh.lastHitTeam !== p.team;
@@ -208,7 +208,7 @@ export function updateBrain(brain, game, dt) {
   if (incoming && sh.hits !== brain.seenHits) {
     brain.seenHits = sh.hits;
     brain.plan = null;
-    const base = brain.role === 'assist' ? 0.05 : d.reaction;
+    const base = brain.role === 'assist' ? ASSIST.reaction : d.reaction;
     brain.reactLeft = Math.max(0.03, base * (0.8 + game.rng() * 0.4));
     brain.wrongFoot = null;
     // Обман: соперник «показал» другой удар — теряем время и шагаем не туда.

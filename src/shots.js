@@ -192,18 +192,30 @@ export function planShot(p) {
     const depthScale = (t === 'net' || t === 'drop' || t === 'serveShort') ? 0.45 : 1;
     target.x += ex * depthScale;
     target.y += ey;
+    // Плохой контакт: высокие удары короче, укоротки «плавают» выше.
+    if (t === 'clear' || t === 'lift') target.x -= -p.side * (1 - q) * 2.0;
     // Не позволяем цели переехать на свою сторону.
     if (Math.sign(target.x) !== -p.side) target.x = -p.side * 0.3;
     const opts = {};
-    if (t === 'smash') opts.speed = SHOTS.smash.maxSpeed * (0.62 + 0.3 * stats.power) * (0.75 + 0.25 * q);
+    if (t === 'smash') opts.speed = SHOTS.smash.maxSpeed * (0.66 + 0.3 * stats.power) * (0.7 + 0.3 * q);
     if (t === 'clear') opts.apex = p.apex ?? 6.2;
     if (t === 'lift' || t === 'serveLong') opts.apex = p.apex ?? 6.6;
-    if (t === 'drop') opts.netClear = p.netClear ?? 0.25;
-    if (t === 'net') opts.netClear = p.netClear ?? 0.1;
+    if (t === 'drop') opts.netClear = (p.netClear ?? 0.25) + (1 - q) * 0.45;
+    if (t === 'net') opts.netClear = (p.netClear ?? 0.1) + (1 - q) * 0.35;
     if (t === 'serveShort') opts.netClear = p.netClear ?? 0.15;
     if (t === 'drive') opts.netClear = p.netClear ?? 0.3;
     if (t === 'clear' || t === 'lift') opts.maxSpeed = SHOTS[t].maxSpeed * (0.75 + 0.25 * stats.power);
-    const launch = solveLaunch(p.from, target, t, opts);
+    let launch = solveLaunch(p.from, target, t, opts);
+    if (t === 'smash') {
+      // Смэш: подбираем глубину так, чтобы скорость была максимальной (крутой и быстрый).
+      const base = Math.abs(target.x);
+      for (const dd of [-0.9, -1.7, 0.8]) {
+        const d2 = Math.max(1.4, Math.min(6.3, base + dd));
+        const tg = { x: -p.side * d2, y: target.y };
+        const l2 = solveLaunch(p.from, tg, t, opts);
+        if (l2 && (!launch || l2.speed > launch.speed + 0.5)) { launch = l2; target = tg; }
+      }
+    }
     if (launch) return { type: t, target, launch, quality: q };
   }
   return null;

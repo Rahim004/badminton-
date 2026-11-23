@@ -58,7 +58,7 @@ export const SHOTS = {
   clear:      { minSpeed: 12, maxSpeed: 60, angles: [28, 72], minNetClear: 0.8, apex: 'high' },
   lift:       { minSpeed: 6,  maxSpeed: 55, angles: [35, 80], minNetClear: 0.5, apex: 'high' },
   drop:       { minSpeed: 4,  maxSpeed: 22, angles: [-35, 30], minNetClear: 0.08, apex: 'low' },
-  smash:      { minSpeed: 22, maxSpeed: 48, angles: [-40, -2], minNetClear: 0.05, apex: 'fast' },
+  smash:      { minSpeed: 22, maxSpeed: 58, angles: [-40, -2], minNetClear: 0.05, apex: 'fast' },
   drive:      { minSpeed: 10, maxSpeed: 34, angles: [-12, 14], minNetClear: 0.08, apex: 'flat' },
   net:        { minSpeed: 1.5, maxSpeed: 10, angles: [-10, 70], minNetClear: 0.04, apex: 'low' },
   serveShort: { minSpeed: 3,  maxSpeed: 14, angles: [0, 40], minNetClear: 0.06, apex: 'low' },
@@ -78,11 +78,11 @@ export const TIMING = {
 
 export const PLAYER = {
   HEIGHT: 1.78,
-  BASE_SPEED: 5.0,       // м/с максимальная (умножается на stat speed)
+  BASE_SPEED: 4.4,       // м/с максимальная (умножается на stat speed)
   ACCEL: 22,             // м/с²
   DECEL: 30,
-  REACH: 1.05,           // горизонтальный радиус досягаемости (рука+ракетка)
-  LUNGE_REACH: 0.55,     // доп. досягаемость выпадом
+  REACH: 0.9,           // горизонтальный радиус досягаемости (рука+ракетка)
+  LUNGE_REACH: 0.5,      // доп. досягаемость выпадом
   REACH_LOW: 0.05,       // минимальная высота контакта
   REACH_HIGH: 2.75,      // максимальная высота контакта стоя
   JUMP_REACH: 0.5,       // добавка прыжком
@@ -96,17 +96,20 @@ export const PLAYER = {
  *  reaction — задержка реакции после удара соперника, с
  *  speed    — множитель скорости бега
  *  aimError — σ разброса цели, м
- *  blunder  — вероятность грубой ошибки удара (аут/сетка) на удар
+ *  blunder  — базовая вероятность грубой ошибки (аут/сетка), растёт под давлением
+ *  posError — σ ошибки выбора позиции перед ударом, м
+ *  whiff    — вероятность промаха (замах мимо)
+ *  wrongFoot — вероятность «купиться на обман»: лишняя задержка и шаг не туда
  *  judge    — σ ошибки оценки «аут/не аут», м
  *  timing   — σ ошибки тайминга, с
  *  smashRate, dropRate — склонность к атаке/укороткам
  *  netClearBonus — запас над сеткой (м): осторожность
  */
 export const DIFFICULTY = {
-  novice:  { label: 'Новичок', reaction: 0.34, speed: 0.78, aimError: 0.55, blunder: 0.12, judge: 0.9, timing: 0.06, smashRate: 0.25, dropRate: 0.25, netClearBonus: 0.25, anticipation: 0.0 },
-  amateur: { label: 'Любитель', reaction: 0.25, speed: 0.88, aimError: 0.38, blunder: 0.06, judge: 0.5, timing: 0.04, smashRate: 0.4, dropRate: 0.3, netClearBonus: 0.15, anticipation: 0.3 },
-  pro:     { label: 'Профи', reaction: 0.17, speed: 0.98, aimError: 0.24, blunder: 0.025, judge: 0.25, timing: 0.025, smashRate: 0.55, dropRate: 0.35, netClearBonus: 0.1, anticipation: 0.6 },
-  legend:  { label: 'Легенда', reaction: 0.12, speed: 1.06, aimError: 0.15, blunder: 0.012, judge: 0.12, timing: 0.015, smashRate: 0.65, dropRate: 0.38, netClearBonus: 0.06, anticipation: 0.85 },
+  novice:  { whiff: 0.06, wrongFoot: 0.4, label: 'Новичок', reaction: 0.34, speed: 0.78, aimError: 0.55, blunder: 0.3, posError: 0.42, judge: 0.9, timing: 0.06, smashRate: 0.25, dropRate: 0.25, netClearBonus: 0.25, anticipation: 0.0 },
+  amateur: { whiff: 0.025, wrongFoot: 0.3, label: 'Любитель', reaction: 0.25, speed: 0.88, aimError: 0.38, blunder: 0.16, posError: 0.25, judge: 0.5, timing: 0.04, smashRate: 0.4, dropRate: 0.3, netClearBonus: 0.15, anticipation: 0.3 },
+  pro:     { whiff: 0.006, wrongFoot: 0.2, label: 'Профи', reaction: 0.17, speed: 0.98, aimError: 0.24, blunder: 0.09, posError: 0.14, judge: 0.25, timing: 0.025, smashRate: 0.55, dropRate: 0.35, netClearBonus: 0.1, anticipation: 0.6 },
+  legend:  { whiff: 0.0, wrongFoot: 0.13, label: 'Легенда', reaction: 0.12, speed: 1.06, aimError: 0.15, blunder: 0.055, posError: 0.08, judge: 0.12, timing: 0.015, smashRate: 0.65, dropRate: 0.38, netClearBonus: 0.06, anticipation: 0.85 },
 };
 export const DIFFICULTY_ORDER = ['novice', 'amateur', 'pro', 'legend'];
 

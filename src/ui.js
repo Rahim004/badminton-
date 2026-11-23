@@ -11,6 +11,7 @@
  *   ui.attach(game)             — подписки на события (подсказки подачи и т.п.)
  */
 import { DIFFICULTY, DIFFICULTY_ORDER, MATCH_FORMATS } from './config.js';
+import { buildControlsSection, loadControls } from './controlsSettings.js';
 
 const STORE_KEY = 'volan.settings.v1';
 
@@ -66,15 +67,17 @@ export function createUI(root, handlers = {}) {
         (() => { const c = h('input', { type: 'checkbox', id: 'assist' }); c.checked = settings.assist; c.addEventListener('change', () => { settings.assist = c.checked; saveSettings(settings); }); return c; })(),
         h('span', {}, 'Автобег и подсказка приземления')),
       h('button', { class: 'btn primary', id: 'start', type: 'button', onclick: () => handlers.onStart?.({ ...settings }) }, 'Играть'),
-      h('p', { class: 'help' }, 'Телефон: слева — джойстик, справа — тап/свайпы. ПК: WASD, J/K/L, пробел.'),
+      h('p', { class: 'help' }, 'Телефон: слева — джойстик, справа — кнопки «Удар», «Клир», «Смэш/Дроп», «Сетка» (свайпы — в паузе → Управление). ПК: WASD/стрелки — бег, пробел/Shift — удар, J/Z — клир, K/X — смэш/дроп, L/C — сетка.'),
     ));
-  // --- пауза ---
+  // --- пауза (+ раздел «Управление») ---
+  const controlsSection = buildControlsSection();
   const pause = h('div', { class: 'screen pause hidden', id: 'pause' },
     h('div', { class: 'card small' },
       h('h2', {}, 'Пауза'),
       h('button', { class: 'btn primary', type: 'button', id: 'resume', onclick: () => handlers.onResume?.() }, 'Продолжить'),
       h('button', { class: 'btn', type: 'button', onclick: () => handlers.onRestart?.() }, 'Заново'),
       h('button', { class: 'btn', type: 'button', onclick: () => handlers.onQuit?.() }, 'В меню'),
+      controlsSection,
     ));
   // --- конец матча ---
   const overTitle = h('h2', {}, '');
@@ -99,7 +102,7 @@ export function createUI(root, handlers = {}) {
   const ui = {
     settings,
     showMenu() { only('menu'); ui.setHint(null); },
-    showPause() { only('pause'); },
+    showPause() { controlsSection.refresh(); only('pause'); },
     showGameOver(info) {
       overTitle.textContent = info.won ? 'Победа!' : 'Поражение';
       overScore.textContent = info.gameScores.map(g => `${g[info.team]}:${g[1 - info.team]}`).join('  ·  ');
@@ -116,8 +119,10 @@ export function createUI(root, handlers = {}) {
       game.on('serveReady', e => {
         if (e.human) {
           const touch = matchMedia('(pointer: coarse)').matches;
-          ui.setHint(touch ? 'Подача: тап — ' + (game.cfg.mode === 'doubles' ? 'короткая' : 'длинная') + ', свайп вверх — длинная, короткий свайп — короткая'
-            : 'Подача: пробел, J — длинная, L — короткая');
+          const c = loadControls();
+          ui.setHint(!touch ? 'Подача: пробел — короткая, J — длинная (влево/вправо — направление)'
+            : c.touchMode === 'swipes' ? 'Подача: тап — короткая, свайп вверх — длинная'
+            : null); // режим кнопок: подписи «короткая/длинная» на самих кнопках (нижняя подсказка их перекрывала)
         } else ui.setHint(null);
       });
       game.on('serve', () => ui.setHint(null));

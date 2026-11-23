@@ -15,7 +15,8 @@
 import { PHYSICS } from './config.js';
 import { createGame } from './game.js';
 import { createRenderer } from './render.js';
-import { createInput } from './input.js';
+import { createInput, screenDirToWorldAt } from './input.js';
+import { loadControls, onControlsChange } from './controlsSettings.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 
@@ -44,9 +45,12 @@ const ui = createUI(uiRoot, {
 });
 ui.attach(game);
 
+let controls = loadControls();
+onControlsChange(c => { controls = c; input.setControls(c); if (game.cfg) game.cfg.assistStrength = c.assist; });
+
 function start(opts) {
   lastOpts = { ...opts };
-  game.startMatch({ humans: 1, seed: (Math.random() * 2 ** 31) | 0, ...opts });
+  game.startMatch({ humans: 1, seed: (Math.random() * 2 ** 31) | 0, assistStrength: controls.assist, ...opts });
   running = true; paused = false; game.paused = false;
   ui.hideAll();
 }
@@ -72,16 +76,33 @@ function applyInput(frameDt) {
   const cmd = input.poll(frameDt);
   if (cmd.pause && running) setPaused(!paused);
   if (!running || paused) return;
-  const w = renderer.screenDirToWorld(cmd.move.x, cmd.move.y);
-  game.setHumanMove(w.x, w.y);
+  const h = game.human;
+  // Направление считаем локально в точке игрока (перспектива!).
+  const w = screenDirToWorldAt(renderer, cmd.move.x, cmd.move.y, h ? h.x : null, h ? h.y : null);
+  game.setHumanMove(w.x, w.y, cmd.held);
   for (const s of cmd.shots) {
     audio.unlock();
-    // Направление удара: только поперечная (мировая y) составляющая.
-    const d = renderer.screenDirToWorld(s.dirX || 0, s.key ? (s.dirY || 0) : 0);
-    const aimY = Math.abs(d.y) > 0.3 ? Math.max(-1, Math.min(1, d.y * 1.2)) : null;
+    // Направление удара: поперечная (мировая y) составляющая джойстика/клавиш/свайпа.
+    const sy = s.source === 'swipe' || s.source === 'tap' ? 0 : (s.dirY || 0);
+    const d = screenDirToWorldAt(renderer, s.dirX || 0, sy, h ? h.x : null, h ? h.y : null);
+    const thr = s.source === 'swipe' ? 0.3 : 0.45;
+    const aimY = Math.abs(d.y) > thr ? Math.max(-1, Math.min(1, d.y * 1.2)) : null;
+    if (s.phase === 'provisional') {
+      // Тап в режиме свайпов: бьём сразу (без задержки), свайп потом уточнит.
+      // На подаче ждём окончательного жеста (иначе свайп-клир стал бы короткой подачей).
+      if (game.phase !== 'serve') { game.humanShot(s.type, aimY); sentGestures.add(s.gid); }
+      continue;
+    }
+    if (s.gid != null && sentGestures.has(s.gid)) {
+      sentGestures.delete(s.gid);
+      if (s.type !== 'smart' || aimY != null) game.retypeHumanShot(s.type, aimY);
+      continue;
+    }
     game.humanShot(s.type, aimY);
   }
+  if (sentGestures.size > 16) sentGestures.clear();
 }
+const sentGestures = new Set();
 
 // ------------------------------------------------------------ размеры
 function resize() {

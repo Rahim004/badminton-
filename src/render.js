@@ -21,6 +21,7 @@ import { COURT } from './config.js';
 import { predictLanding } from './physics.js';
 import { SHOT_LABELS } from './shots.js';
 import { createCharacters } from './render/character.js';
+import { drawControlsOverlay } from './controlsOverlay.js';
 
 const C = {
   bgTop: '#0e1a2b', bgBot: '#1b2d45',
@@ -391,36 +392,6 @@ export function createRenderer(canvas) {
     }
   }
 
-  function drawTouchUI(input) {
-    if (!input || !input.state) return;
-    const st = input.state;
-    const j = st.joystick;
-    if (j.active) {
-      ctx.fillStyle = 'rgba(255,255,255,0.10)';
-      ctx.strokeStyle = 'rgba(255,255,255,0.35)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(j.bx, j.by, j.radius, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.55)';
-      ctx.beginPath(); ctx.arc(j.kx, j.ky, j.radius * 0.42, 0, Math.PI * 2); ctx.fill();
-    } else if (st.touchSeen) {
-      // Подсказка зоны джойстика.
-      const r = Math.min(56, R.w * 0.12);
-      const bx = r + 26, by = R.h - r - 30;
-      ctx.strokeStyle = 'rgba(255,255,255,0.16)'; ctx.lineWidth = 2;
-      ctx.beginPath(); ctx.arc(bx, by, r, 0, Math.PI * 2); ctx.stroke();
-      ctx.fillStyle = 'rgba(255,255,255,0.12)';
-      ctx.beginPath(); ctx.arc(bx, by, r * 0.42, 0, Math.PI * 2); ctx.fill();
-    }
-    // След свайпа.
-    for (const g of st.gestures) {
-      const k = 1 - g.age / 0.35;
-      if (k <= 0) continue;
-      ctx.strokeStyle = `rgba(255,226,122,${0.7 * k})`; ctx.lineWidth = 5; ctx.lineCap = 'round';
-      ctx.beginPath(); ctx.moveTo(g.x0, g.y0); ctx.lineTo(g.x1, g.y1); ctx.stroke();
-      ctx.fillStyle = `rgba(255,226,122,${0.5 * k})`;
-      ctx.beginPath(); ctx.arc(g.x1, g.y1, 10 + 14 * (1 - k), 0, Math.PI * 2); ctx.fill();
-    }
-  }
-
   // ---------------------------------------------------------------- кадр
   /**
    * Сглаженное «рендер-время». Симуляция 120 Гц шагает пачками (1–3 шага за кадр),
@@ -528,7 +499,7 @@ export function createRenderer(canvas) {
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     drawHUD(game);
     drawBanners(dt);
-    drawTouchUI(input);
+    drawControlsOverlay(ctx, input, { w: R.w, h: R.h, game, project, dt });
   };
 
   return R;

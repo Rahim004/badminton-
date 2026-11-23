@@ -88,7 +88,12 @@ def run_viewport(p, url, name, w, h, mobile):
         page.screenshot(path=f'{SHOTS}/{name}-joystick.png')
         # Свайп вверх (клир) регистрируется как команда.
         page.evaluate('window.__lastShots = []; __game.game.on("hit", e => { if (e.player.controller === "human") window.__lastShots.push(e.type) })')
-        page.evaluate("""(() => { const g = __game.game; const orig = g.humanShot; window.__cmd = []; g.humanShot = (t, a) => { window.__cmd.push(t); orig(t, a); }; })()""")
+        # Режим свайпов (по умолчанию на телефоне — кнопки). Тап сразу даёт умный удар,
+        # свайп уточняет его через retypeHumanShot — записываем итоговый тип жеста.
+        page.evaluate("""(async () => { const m = await import('./src/controlsSettings.js'); m.saveControls({ touchMode: 'swipes' }); })()""")
+        page.evaluate("""(() => { const g = __game.game; const o = g.humanShot.bind(g), r = g.retypeHumanShot.bind(g); window.__cmd = [];
+            g.humanShot = (t, a) => { if (t !== 'smart') __cmd.push(t); o(t, a); };
+            g.retypeHumanShot = (t, a) => { __cmd.push(t); return r(t, a); }; })()""")
         drag(cdp, page, w * 0.75, h * 0.7, w * 0.75, h * 0.7 - 160, steps=5)
         page.wait_for_timeout(60)
         drag(cdp, page, w * 0.75, h * 0.4, w * 0.75 + 5, h * 0.4 + 120, steps=5)
@@ -96,7 +101,8 @@ def run_viewport(p, url, name, w, h, mobile):
         drag(cdp, page, w * 0.75, h * 0.6, w * 0.75, h * 0.6 - 50, steps=4)
         page.wait_for_timeout(100)
         cmds = page.evaluate('window.__cmd')
-        check(cmds[:3] == ['clear', 'smash', 'net'], f'{name}: свайпы → {cmds}')
+        check(cmds[:3] == ['clear', 'smashdrop', 'net'], f'{name}: свайпы → {cmds}')
+        page.evaluate("""(async () => { const m = await import('./src/controlsSettings.js'); m.saveControls({ touchMode: 'buttons' }); })()""")
         page.evaluate('__game.game.cfg.assist = true')
 
     if not mobile:

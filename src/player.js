@@ -11,6 +11,8 @@
  *   createPlayer({id, team, idx, character, controller}) -> Player
  *   updatePlayer(p, dt, ctx) -> 'contact' | null     ctx: {mode, halfWidth}
  *   requestSwing(p, shuttle, type, aimY, opts?) -> {ok, delay?, quality?, timing?, reason?}
+ *     opts: {buffer, traj, timingNoise, pressure, human, pressAge}
+ *     type может быть и 'smashdrop' (кнопка: высоко — смэш, иначе дроп/сетка)
  *   findContact(p, shuttle, maxT?) -> Contact | null
  *   steerTo(p, tx, ty, opts?) — выставляет p.input для движения к точке
  *   resolveShotType(requested, contact, side) -> string
@@ -87,11 +89,16 @@ export function findContact(p, shuttle, maxT = TIMING.BUFFER, traj = null) {
   const tr = traj || predictTrajectory(shuttle, maxT + 0.02, 1);
   let best = null, bestScore = Infinity;
   const reachH = PLAYER.REACH, reachL = PLAYER.REACH + PLAYER.LUNGE_REACH;
+  let prevX = shuttle.x;
   for (const s of tr) {
+    const px = prevX; prevX = s.x;
     if (s.t > maxT) break;
     if (s.t < TIMING.MIN_DELAY) continue;
     if (s.net) break;
     if (Math.sign(s.x) !== p.side) continue;
+    // Контакт исполняется на тик раньше точки прогноза (игрок обновляется до волана):
+    // у самой сетки волан в этот момент ещё над чужой половиной — такой контакт был бы промахом.
+    if (Math.sign(px) !== p.side) continue;
     if (s.z < PLAYER.REACH_LOW || s.z > PLAYER.REACH_HIGH + PLAYER.JUMP_REACH) continue;
     const fp = futurePos(p, s.t);
     const dist = Math.hypot(s.x - fp.x, s.y - fp.y);
@@ -111,6 +118,8 @@ export function resolveShotType(req, c, side) {
   const depth = Math.abs(c.x);       // от сетки
   const z = c.z;
   let t = req;
+  // Кнопка «Смэш/Дроп»: высоко — смэш, иначе укороченный (у сетки — сетка).
+  if (t === 'smashdrop') t = (z >= PLAYER.SMASH_MIN_Z || (depth < 2.4 && z > 1.5)) ? 'smash' : 'drop';
   if (t === 'smart') {
     if (z >= 2.3 && depth < 5.2) t = 'smash';
     else if (z >= 2.0) t = depth > 4.8 ? 'clear' : 'smash';
@@ -141,9 +150,11 @@ export function requestSwing(p, shuttle, type, aimY, opts = {}) {
     p.lastSwing = { type, kind: 'overhead', t: 0, whiff: true };
     return { ok: false, reason: 'whiff' };
   }
-  const off = c.t - TIMING.WINDUP + (opts.timingNoise || 0);
+  // pressAge (только человек): сколько секунд нажатие ждало в буфере.
+  const off = c.t - TIMING.WINDUP + (opts.timingNoise || 0) + (opts.pressAge || 0);
   const err = Math.max(0, Math.abs(off) - TIMING.PERFECT_WINDOW);
-  let quality = Math.max(0.15, 1 - err / 0.22);
+  // Человеку раннее нажатие прощается мягче (буфер), позднее — как раньше.
+  let quality = opts.human && off > 0 ? Math.max(0.3, 1 - err / 0.4) : Math.max(0.15, 1 - err / 0.22);
   if (c.lunge) quality *= 0.85;
   const timing = err === 0 ? 'perfect' : off > 0 ? 'early' : 'late';
   const kind = c.z > 1.9 ? 'overhead' : c.z < 1.0 ? 'underhand' : 'side';
@@ -175,7 +186,9 @@ export function updatePlayer(p, dt, ctx) {
   if (dv > 0) {
     // Разгон медленнее торможения/смены направления.
     const braking = (tvx * p.vx + tvy * p.vy) < (p.vx * p.vx + p.vy * p.vy) * 0.5;
-    const a = (braking ? PLAYER.DECEL : PLAYER.ACCEL) * dt;
+    let a = (braking ? PLAYER.DECEL : PLAYER.ACCEL) * dt;
+    // Человек отпустил джойстик — останавливаемся чётче, без «скольжения по льду».
+    if (p.controller === 'human' && m < 0.05) a *= 1.35;
     const k = Math.min(1, a / dv);
     p.vx += dvx * k; p.vy += dvy * k;
   }
@@ -198,8 +211,15 @@ export function updatePlayer(p, dt, ctx) {
     const w = p.swing;
     w.t += dt;
     if (w.jump) {
-      const u = (w.t - w.contactAt) / 0.28;
-      p.z = Math.max(0, 0.45 * (1 - u * u));
+      // Взлёт от пола к контакту (не телепорт на высоту при коротком замахе), затем падение.
+      if (w.t < w.contactAt) {
+        const up = Math.min(w.contactAt, 0.28);
+        const k = Math.max(0, 1 - (w.contactAt - w.t) / up);
+        p.z = 0.45 * (1 - (1 - k) * (1 - k));
+      } else {
+        const u = (w.t - w.contactAt) / 0.28;
+        p.z = Math.max(0, 0.45 * (1 - u * u));
+      }
     }
     if (!w.done && w.t >= w.contactAt - 1e-9) {
       w.done = true;

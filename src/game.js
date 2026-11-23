@@ -24,7 +24,12 @@
  *   game.startMatch(opts)       opts: {mode, difficulty, format, assist, characters, seed, humans}
  *   game.step(dt)               один тик симуляции (dt = PHYSICS.DT)
  *   game.setHumanMove(mx, my)   мировое направление движения человека (|v| ≤ 1)
- *   game.humanShot(type, aimY)  type: 'smart'|'clear'|'smash'|'drop'|'net'|'drive'|'lift'; aimY: -1..1 | null
+ *   game.humanShot(type, aimY)  type: 'smart'|'clear'|'smash'|'smashdrop'|'drop'|'net'|'drive'|'lift'; aimY: -1..1 | null
+ *       Нажатие буферизуется (HUMAN_HOLD): если волан ещё далеко, удар начнётся сам
+ *       в нужный кадр; если так и не долетит — честный промах с событием 'whiff'.
+ *   game.retypeHumanShot(type, aimY) — уточнить тип ещё не выполненного удара (свайп после тапа)
+ *   game.humanReach             — {t, x, y, z, armed} ближайший контакт человека (для индикатора тайминга) | null
+ *   game.cfg.assistStrength     — 'off'|'light'|'strong'|'auto' (auto: новичок — strong, иначе light)
  *   game.forceAI(bool)          ИИ управляет и человеческим слотом (для тестов/демо)
  *   game.on(name, fn) / game.off(name, fn)
  *   game.snapshot()             плоский объект состояния для тестов
@@ -33,12 +38,20 @@
 import { PHYSICS, PLAYER, FLOW, TIMING, MATCH_FORMATS, DIFFICULTY, COURT, CHARACTER_ORDER, DOUBLES_MOD } from './config.js';
 import { createShuttle, stepShuttle, predictLanding, predictTrajectory } from './physics.js';
 import { createMatch, servingInfo, awardRally, judgeLanding, serviceBox, halfWidth } from './rules.js';
-import { createPlayer, updatePlayer, placePlayer, cancelSwing, resolveShotType, requestSwing } from './player.js';
+import { createPlayer, updatePlayer, placePlayer, cancelSwing, resolveShotType, requestSwing, findContact } from './player.js';
 import { planShot } from './shots.js';
 import { createBrain, updateBrain, chooseServe, interceptPlan } from './ai.js';
 
 /** Базовая вероятность грубой ошибки человека (растёт при плохом тайминге/давлении). */
 const HUMAN_BLUNDER = 0.06;
+/** Сколько нажатие человека может ждать в буфере сверх TIMING.BUFFER, с. */
+const HUMAN_HOLD = 0.36;
+/** Сила автобега: [без джойстика, доля подмешивания при зажатом джойстике]. */
+const ASSIST_LEVELS = { off: [0, 0], light: [0.75, 0.22], strong: [1, 0.45] };
+/** Замах подачи: от решения подать до вылета волана, с (чтобы движение ракетки шло раньше вылета). */
+const SERVE_WINDUP = 0.16;
+/** Горизонт индикатора тайминга, с. */
+const REACH_HORIZON = 0.75;
 
 /** Детерминированный ГПСЧ (mulberry32). */
 export function makeRng(seed) {
@@ -52,7 +65,7 @@ export function makeRng(seed) {
 }
 
 const DEFAULTS = {
-  mode: 'singles', difficulty: 'amateur', format: 'quick', assist: true,
+  mode: 'singles', difficulty: 'amateur', format: 'quick', assist: true, assistStrength: 'auto',
   humans: 1, characters: null, seed: 0,
 };
 
@@ -84,8 +97,28 @@ export function createGame(opts = {}) {
 
     startMatch(o = {}) { startMatch(game, o); return game; },
     step(dt = PHYSICS.DT) { step(game, dt); },
-    setHumanMove(mx, my) { game.humanInput.mx = mx; game.humanInput.my = my; game.humanInput.active = Math.hypot(mx, my) > 0.12; },
-    humanShot(type = 'smart', aimY = null) { game.pendingShot = { type, aimY, at: game.time }; },
+    setHumanMove(mx, my, held) {
+      const hi = game.humanInput;
+      hi.mx = mx; hi.my = my;
+      hi.mag = Math.min(1, Math.hypot(mx, my));
+      // held — палец на джойстике (даже в мёртвой зоне): игрок управляет сам.
+      hi.active = hi.mag > 0.02 || !!held;
+    },
+    humanShot(type = 'smart', aimY = null) {
+      // Повторное нажатие, пока удар ждёт в буфере, не сбрасывает время первого
+      // (иначе «долбёжка» давала бы идеальный тайминг), а только уточняет удар.
+      const ps = game.pendingShot;
+      if (ps && game.time - ps.at < HUMAN_HOLD + TIMING.BUFFER) { ps.type = type; if (aimY != null) ps.aimY = aimY; return; }
+      game.pendingShot = { type, aimY, at: game.time };
+    },
+    retypeHumanShot(type, aimY = null) {
+      const ps = game.pendingShot;
+      if (ps) { ps.type = type; if (aimY != null) ps.aimY = aimY; return true; }
+      const w = game.human && game.human.swing;
+      if (w && !w.done) { w.type = type; if (aimY != null) w.aimY = aimY; return true; }
+      return false;
+    },
+    humanReach: null,
     forceAI(on = true) {
       game.aiControlsHuman = !!on;
       for (const b of game.brains) if (b.player.controller === 'human') b.role = on ? 'ai' : 'assist';
@@ -125,6 +158,7 @@ function startMatch(game, o) {
   game.stats = { rallies: [], faults: { out: 0, net: 0, serveFault: 0 }, winners: 0, shots: {}, perfect: 0, hits: 0, whiffs: 0, points: [0, 0] };
   game.time = 0;
   game.lastPoint = null;
+  game.humanReach = null;
   game.humanPressure = 1;
   enterServe(game);
 }
@@ -148,6 +182,7 @@ function enterServe(game) {
   game.serveInfo = s;
   game.phase = 'serve';
   game.pendingShot = null;
+  game.serveQueued = null;
   game.rally = { lastType: null, lastTarget: null, lastHitter: -1, shots: [] };
   const sh = game.shuttle;
   Object.assign(sh, createShuttle());
@@ -173,6 +208,16 @@ function enterServe(game) {
   const humanServes = server.controller === 'human' && !game.aiControlsHuman;
   game.phaseTimer = humanServes ? TIMING.SERVE_CLOCK : lerp(FLOW.AI_SERVE_DELAY[0], FLOW.AI_SERVE_DELAY[1], game.rng());
   game.emit('serveReady', { serverId: server.id, human: humanServes });
+}
+
+/** Подача с коротким замахом снизу: вылет волана — в момент контакта (swing.contactAt). */
+function queueServe(game, p, type, aimY) {
+  game.serveQueued = { type, aimY };
+  p.swing = {
+    type, aimY, t: 0, contactAt: SERVE_WINDUP, contact: null, quality: 0.9, timing: 'perfect',
+    kind: 'underhand', jump: false, lunge: false, done: false, serve: true, pressure: 1,
+  };
+  p.action = 'swing';
 }
 
 function holdShuttle(game, p) {
@@ -243,6 +288,7 @@ function launch(game, p, vx, vy, vz, type, target) {
   game.rally.lastType = type;
   game.rally.lastTarget = target;
   game.rally.lastHitter = p.id;
+  game.rally.lastHitAt = game.time;
   game.rally.shots.push(type);
   game.stats.shots[type] = (game.stats.shots[type] || 0) + 1;
 }
@@ -355,21 +401,30 @@ function step(game, dt) {
     const server = teamPlayer(game, s.serverTeam, s.serverIdx);
     const humanServes = server.controller === 'human' && !game.aiControlsHuman;
     game.phaseTimer -= dt;
-    if (humanServes) {
+    if (game.serveQueued) {
+      game.pendingShot = null;
+    } else if (humanServes) {
       if (game.pendingShot) {
         const t = game.pendingShot.type;
-        const type = t === 'clear' || t === 'lift' || t === 'smash' ? 'serveLong'
-          : t === 'net' || t === 'drop' ? 'serveShort'
-          : (game.cfg.mode === 'doubles' ? 'serveShort' : 'serveLong');
-        doServe(game, type, game.pendingShot.aimY);
+        // «Удар» — короткая подача, «Клир» (и смэш) — длинная.
+        const type = t === 'clear' || t === 'lift' || t === 'smash' || t === 'smashdrop' ? 'serveLong' : 'serveShort';
+        queueServe(game, server, type, game.pendingShot.aimY);
         game.pendingShot = null;
       } else if (game.phaseTimer <= 0) {
-        doServe(game, game.cfg.mode === 'doubles' ? 'serveShort' : 'serveLong', null);
+        queueServe(game, server, game.cfg.mode === 'doubles' ? 'serveShort' : 'serveLong', null);
       }
-    } else if (game.phaseTimer <= 0) {
-      doServe(game, chooseServe(brainOf(game, server), game), null);
+    } else {
+      game.pendingShot = null; // нажатия во время чужой подачи не копим
+      if (game.phaseTimer <= 0) queueServe(game, server, chooseServe(brainOf(game, server), game), null);
     }
-    for (const p of game.players) updatePlayer(p, dt, ctx);
+    for (const p of game.players) {
+      const ev = updatePlayer(p, dt, ctx);
+      if (ev === 'contact' && p === server && game.serveQueued) {
+        const q = game.serveQueued; game.serveQueued = null;
+        doServe(game, q.type, q.aimY);
+        if (game.phase === 'rally') return;
+      }
+    }
     if (sh.state === 'held') holdShuttle(game, server);
     return;
   }
@@ -391,17 +446,8 @@ function step(game, dt) {
   for (const b of game.brains) {
     const p = b.player;
     if (p.controller === 'human' && !game.aiControlsHuman) {
-      const hi = game.humanInput;
-      if (hi.active || !game.cfg.assist) { p.input.mx = hi.mx; p.input.my = hi.my; }
-      else updateBrain(b, game, dt); // автопередвижение
-      if (game.pendingShot) {
-        if (game.time - game.pendingShot.at > 0.12) game.pendingShot = null;
-        else if (!p.swing && p.action !== 'recover' && p.action !== 'whiff') {
-          const ps = game.pendingShot;
-          game.pendingShot = null;
-          requestSwing(p, sh, ps.type, ps.aimY, { pressure: game.humanPressure ?? 1 });
-        }
-      }
+      steerHuman(game, b, p, dt);
+      updateHumanShot(game, p, sh);
     } else {
       updateBrain(b, game, dt);
     }
@@ -415,6 +461,80 @@ function step(game, dt) {
   if (sh.state === 'ground') endRally(game, { x: sh.x, y: sh.y });
 }
 
+
+/** Движение человека: джойстик + автобег (подмешивается, джойстик главнее). */
+function steerHuman(game, b, p, dt) {
+  const hi = game.humanInput;
+  const lvl = assistLevel(game);
+  if (!game.cfg.assist || (lvl[0] === 0 && lvl[1] === 0)) {
+    p.input.mx = hi.mx; p.input.my = hi.my; p.speedMul = 1;
+    return;
+  }
+  updateBrain(b, game, dt); // пишет p.input и speedMul автобега
+  if (!hi.active) {
+    p.input.mx *= lvl[0]; p.input.my *= lvl[0];
+    return;
+  }
+  // Джойстик зажат: ручное управление на полной скорости + мягкая подсказка,
+  // тем слабее, чем сильнее отклонён джойстик.
+  const w = lvl[1] * (1 - hi.mag) * (1 - hi.mag);
+  p.input.mx = hi.mx + (p.input.mx - hi.mx) * w;
+  p.input.my = hi.my + (p.input.my - hi.my) * w;
+  p.speedMul = 1;
+}
+
+function assistLevel(game) {
+  let k = game.cfg.assistStrength || 'auto';
+  if (k === 'auto') k = game.cfg.difficulty === 'novice' ? 'strong' : 'light';
+  return ASSIST_LEVELS[k] || ASSIST_LEVELS.light;
+}
+
+/**
+ * Удар человека с буфером: нажатие ждёт, пока волан войдёт в досягаемость,
+ * и замах стартует в кадр, когда до контакта остаётся WINDUP. Тайминг
+ * считается от момента нажатия (раннее нажатие — «рано», но не промах).
+ */
+function updateHumanShot(game, p, sh) {
+  const incoming = sh.state === 'flight' && sh.lastHitTeam !== p.team;
+  const ps = game.pendingShot;
+  // Индикатор тайминга (через тик — дёшево).
+  if (incoming && !p.swing) {
+    if (((game.time * 120) | 0) % 2 === 0 || !game.humanReach) {
+      const c = findContact(p, sh, REACH_HORIZON);
+      game.humanReach = c ? { t: c.t, x: c.x, y: c.y, z: c.z, at: game.time, armed: !!ps } : null;
+    } else if (game.humanReach) game.humanReach.armed = !!ps;
+  } else game.humanReach = null;
+  if (!ps) return;
+  const age = game.time - ps.at;
+  const busy = p.swing || p.action === 'recover' || p.action === 'whiff';
+  // Ещё восстанавливаемся после своего удара — нажатие ждёт в буфере (не теряется).
+  if (busy) { if (age > HUMAN_HOLD + TIMING.BUFFER) game.pendingShot = null; return; }
+  if (!incoming) {
+    // Двойное нажатие сразу после своего удара/подачи — молча игнорируем.
+    if (sh.lastHitter === p.id && game.time - (game.rally.lastHitAt ?? -9) < 0.45) { game.pendingShot = null; return; }
+    // Волан не летит к нам — замах в пустоту (сразу, чтобы была обратная связь).
+    if (sh.state === 'flight' || age > 0.15) humanWhiff(game, p, ps);
+    return;
+  }
+  const c = findContact(p, sh, TIMING.BUFFER);
+  const expired = age >= HUMAN_HOLD;
+  if (c && (c.t <= TIMING.WINDUP + 0.005 || expired)) {
+    game.pendingShot = null;
+    const res = requestSwing(p, sh, ps.type, ps.aimY, { pressure: game.humanPressure ?? 1, human: true, pressAge: age });
+    if (res.ok) game.emit('swing', { player: p, type: ps.type, delay: res.delay, timing: res.timing, buffered: age });
+    return;
+  }
+  if (!c && expired) humanWhiff(game, p, ps);
+}
+
+function humanWhiff(game, p, ps) {
+  game.pendingShot = null;
+  p.action = 'whiff';
+  p.actionTimer = TIMING.WHIFF_RECOVER;
+  p.lastSwing = { type: ps.type, kind: 'overhead', t: 0, whiff: true };
+  game.stats.whiffs++;
+  game.emit('whiff', { player: p });
+}
 
 function snapshot(game) {
   const m = game.match, sh = game.shuttle;

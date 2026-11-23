@@ -20,6 +20,7 @@
 import { COURT } from './config.js';
 import { predictLanding } from './physics.js';
 import { SHOT_LABELS } from './shots.js';
+import { createCharacters } from './render/character.js';
 
 const C = {
   bgTop: '#0e1a2b', bgBot: '#1b2d45',
@@ -122,6 +123,7 @@ export function createRenderer(canvas) {
   R.attach = function (game) {
     R.game = game;
     game.on('hit', e => {
+      chars.onHit(e, game);
       const sh = game.shuttle;
       const human = e.player.controller === 'human';
       R.flashes.push({ x: sh.x, y: sh.y, z: sh.z, t: 0, perfect: e.timing === 'perfect', color: e.player.color });
@@ -261,104 +263,9 @@ export function createRenderer(canvas) {
   }
 
   // ---------------------------------------------------------------- игрок
-  /** Позиция кисти с ракеткой в мире (простая кинематика замаха). */
-  function handPos(p, game) {
-    const s = p.side, fwd = -s, right = s; // вперёд — к сетке (x), вправо — y = s
-    const bx = p.x, by = p.y, bz = p.z;
-    let hx = 0.25, hy = 0.42, hz = 1.15; // относительная: вперёд, вправо, вверх
-    let rkx = 0.2, rky = 0.25, rkz = 0.55; // направление ракетки от кисти
-    const w = p.swing || (p.lastSwing && !p.lastSwing.whiff && p.actionTimer > 0 ? p.lastSwing : null);
-    if (p.action === 'serve') { hx = 0.3; hy = 0.35; hz = 0.9; rkx = -0.2; rky = 0.1; rkz = -0.6; }
-    if (w) {
-      const u = p.swing ? clamp((w.t - (w.contactAt - 0.16)) / 0.3, 0, 1) : 1;
-      if (w.kind === 'overhead') {
-        // назад-вверх → контакт впереди-сверху → вниз через тело
-        const k0 = [-0.25, 0.35, 1.95], k1 = [0.25, 0.3, 2.35], k2 = [0.35, -0.3, 1.1];
-        const k = u < 0.53 ? mix3(k0, k1, u / 0.53) : mix3(k1, k2, (u - 0.53) / 0.47);
-        [hx, hy, hz] = k;
-        rkx = u < 0.53 ? lerp(-0.5, 0.15, u / 0.53) : lerp(0.15, 0.5, (u - 0.53) / 0.47);
-        rky = 0.05; rkz = u < 0.53 ? lerp(0.1, 0.65, u / 0.53) : lerp(0.65, -0.4, (u - 0.53) / 0.47);
-      } else if (w.kind === 'underhand') {
-        const k0 = [-0.2, 0.5, 0.75], k1 = [0.45, 0.35, 0.55], k2 = [0.4, 0.05, 1.6];
-        const k = u < 0.53 ? mix3(k0, k1, u / 0.53) : mix3(k1, k2, (u - 0.53) / 0.47);
-        [hx, hy, hz] = k;
-        rkx = lerp(-0.3, 0.6, u); rky = 0.1; rkz = lerp(-0.5, 0.4, u);
-      } else {
-        const k0 = [-0.1, 0.65, 1.25], k1 = [0.45, 0.45, 1.25], k2 = [0.35, -0.35, 1.25];
-        const k = u < 0.53 ? mix3(k0, k1, u / 0.53) : mix3(k1, k2, (u - 0.53) / 0.47);
-        [hx, hy, hz] = k;
-        rkx = lerp(-0.4, 0.6, u); rky = lerp(0.4, -0.4, u); rkz = 0.15;
-      }
-      if (w.lunge) { hx += 0.25; hz -= 0.15; }
-    }
-    const H = { x: bx + fwd * hx, y: by + right * hy, z: bz + hz };
-    const rl = Math.hypot(rkx, rky, rkz) || 1;
-    const RK = { x: H.x + fwd * rkx / rl * 0.62, y: H.y + right * rky / rl * 0.62, z: H.z + rkz / rl * 0.62 };
-    return { H, RK };
-  }
-  function mix3(a, b, t) { return [lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t)]; }
-
-  function drawPlayer(p, game) {
-    const s = p.side, fwd = -s, right = s;
-    const z0 = p.z;
-    const run = Math.min(1, Math.hypot(p.vx, p.vy) / 3.5);
-    const ph = p.anim * 3.2;
-    const lunge = p.swing && p.swing.lunge;
-    shadowAt(p.x, p.y, 0.32, 0.3 * (1 - Math.min(0.6, z0)));
-    const P = (dx, dy, dz) => project(p.x + fwd * dx + 0, p.y + right * dy, z0 + dz);
-    const P2 = (wx, wy, wz) => project(wx, wy, wz);
-    const base = project(p.x, p.y, 0);
-    const sc = base.s;
-    // Ноги.
-    const legA = Math.sin(ph) * 0.28 * run, legB = -legA;
-    const hip = P(0, 0, 0.92);
-    const footL = lunge ? P(0.55, -0.12, 0.02) : P(legA + (run ? 0 : 0.02), -0.14, 0.02 + Math.max(0, Math.cos(ph)) * 0.08 * run);
-    const footR = lunge ? P(-0.35, 0.14, 0.02) : P(legB, 0.14, 0.02 + Math.max(0, -Math.cos(ph)) * 0.08 * run);
-    const kneeL = P((lunge ? 0.35 : legA * 0.5) + 0.05, -0.12, 0.5);
-    const kneeR = P((lunge ? -0.25 : legB * 0.5) + 0.05, 0.12, 0.5);
-    limb([hip, kneeL, footL], C.skin, 0.12 * sc);
-    limb([hip, kneeR, footR], C.skin, 0.12 * sc);
-    dot(footL, 0.08 * sc, C.shoe); dot(footR, 0.08 * sc, C.shoe);
-    // Шорты и торс.
-    const lean = lunge ? 0.25 : run * 0.12;
-    const chest = P(lean, 0, 1.35), neck = P(lean * 1.1, 0, 1.5);
-    limb([P(0, 0, 0.88), P(lean * 0.5, 0, 1.05)], C.shorts, 0.34 * sc);
-    limb([P(lean * 0.4, 0, 1.0), chest], p.color, 0.38 * sc);
-    // Рука с ракеткой.
-    const { H, RK } = handPos(p, game);
-    const shR = P(lean, 0.2, 1.42), shL = P(lean, -0.2, 1.42);
-    const h = P2(H.x, H.y, H.z), rk = P2(RK.x, RK.y, RK.z);
-    const elbow = P2((shR3(p, lean).x + H.x) / 2 + fwd * -0.05, (shR3(p, lean).y + H.y) / 2 + right * 0.08, (1.42 + z0 + H.z) / 2 - 0.05);
-    // Свободная рука.
-    limb([shL, P(lean + 0.15, -0.32, 1.1), P(lean + 0.3, -0.25, 1.0)], C.skin, 0.09 * sc);
-    // Голова.
-    const head = P(lean * 1.2, 0, 1.64);
-    dot(head, 0.13 * sc, C.skin);
-    const hairP = P(lean * 1.2 - 0.03, 0, 1.7);
-    ctx.fillStyle = p.accent || C.hair;
-    ctx.beginPath(); ctx.arc(hairP.x, hairP.y, 0.12 * sc, Math.PI, 0); ctx.fill();
-    // Рука и ракетка рисуются последними (поверх тела, если впереди).
-    limb([shR, elbow, h], C.skin, 0.09 * sc);
-    ctx.strokeStyle = '#2a2a2a'; ctx.lineWidth = Math.max(1, 0.03 * sc);
-    ctx.beginPath(); ctx.moveTo(h.x, h.y); ctx.lineTo(rk.x, rk.y); ctx.stroke();
-    // Обод ракетки.
-    ctx.strokeStyle = p.color; ctx.lineWidth = Math.max(1.2, 0.035 * sc);
-    ctx.beginPath(); ctx.ellipse(rk.x, rk.y, 0.13 * sc, 0.1 * sc, Math.atan2(rk.y - h.y, rk.x - h.x), 0, Math.PI * 2); ctx.stroke();
-    ctx.fillStyle = 'rgba(255,255,255,0.18)'; ctx.fill();
-    // Маркер человека.
-    if (p.controller === 'human') {
-      const top = P(0, 0, 2.05);
-      ctx.fillStyle = '#ffe27a';
-      ctx.beginPath(); ctx.moveTo(top.x, top.y + 6); ctx.lineTo(top.x - 6, top.y - 4); ctx.lineTo(top.x + 6, top.y - 4); ctx.closePath(); ctx.fill();
-    }
-  }
-  function shR3(p, lean) { const s = p.side; return { x: p.x - s * lean, y: p.y + s * 0.2 }; }
-
-  function limb(pts, color, w) {
-    ctx.strokeStyle = color; ctx.lineWidth = Math.max(1.5, w); ctx.lineCap = 'round'; ctx.lineJoin = 'round';
-    ctx.beginPath(); pts.forEach((q, i) => i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)); ctx.stroke();
-  }
-  function dot(q, r, color) { ctx.fillStyle = color; ctx.beginPath(); ctx.arc(q.x, q.y, Math.max(1.5, r), 0, Math.PI * 2); ctx.fill(); }
+  // Персонажи (скелет, анимация, отрисовка) — в render/character.js.
+  const chars = createCharacters(ctx, project, R.camera);
+  R.characters = chars; // для тестов/отладки
 
   // ---------------------------------------------------------------- волан
   function drawShuttle(sh) {
@@ -515,6 +422,33 @@ export function createRenderer(canvas) {
   }
 
   // ---------------------------------------------------------------- кадр
+  /**
+   * Сглаженное «рендер-время». Симуляция 120 Гц шагает пачками (1–3 шага за кадр),
+   * из-за чего позиции дёргаются. Рисуем на ровно идущих часах, отстающих от
+   * симуляции не больше чем на ~2 шага, и сдвигаем объекты назад по скорости.
+   * Возвращает tau = renderTime − game.time (≤ 0); R.animDt — шаг часов для анимации
+   * (0 на паузе и в замороженных тестах).
+   */
+  const SIM_DT = 1 / 120;
+  R.clk = 0; R.clkGame = null; R.rate = 1; R.lastGT = 0; R.animDt = 0; R.lastHits = -1;
+  function renderClock(game, dt) {
+    const gt = game.time || 0;
+    const prev = R.clk;
+    if (R.clkGame !== game || Math.abs(gt - R.clk) > 0.12) {
+      R.clkGame = game; R.clk = gt; R.rate = 1; R.animDt = gt > R.lastGT && gt - R.lastGT < 0.12 ? gt - R.lastGT : 0;
+    } else {
+      const dg = gt - R.lastGT;
+      R.rate += ((dt > 0 ? clamp(dg / dt, 0, 8) : 0) - R.rate) * 0.2;
+      if (dg <= 0 && R.clk >= gt - 1e-6) R.rate *= 0.5;
+      R.clk += dt * R.rate;
+      R.clk += (gt - SIM_DT - R.clk) * 0.04;            // мягко держим отставание ≈ 1 шаг
+      R.clk = clamp(R.clk, gt - 2.5 * SIM_DT, gt);
+      R.animDt = Math.max(0, R.clk - prev);
+    }
+    R.lastGT = gt;
+    return R.clk - gt;
+  }
+
   R.render = function (game, input, dt = 1 / 60) {
     R.time += dt;
     const humanSide = game.human ? game.human.side : (game.players[0] ? game.players[0].side : -1);
@@ -527,6 +461,8 @@ export function createRenderer(canvas) {
       ctx.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a);
     }
     drawFloor(game);
+    const tau = renderClock(game, dt);
+    const animDt = Math.min(0.1, Math.max(R.animDt, game.phase === 'over' ? dt : 0));
     const sh = game.shuttle;
     // Метки приземления.
     R.landMarks = R.landMarks.filter(m => (m.t += dt) < 1.6);
@@ -558,9 +494,16 @@ export function createRenderer(canvas) {
 
     // Сортировка объектов по глубине (дальние — первыми).
     const items = [];
-    for (const p of game.players) items.push({ d: project(p.x, p.y, 0.9).d, draw: () => drawPlayer(p, game) });
+    for (const p of game.players) {
+      chars.prepare(p, game, { x: p.x + p.vx * tau, y: p.y + p.vy * tau }, animDt);
+      items.push({ d: chars.depth(p), draw: () => chars.draw(p) });
+    }
     items.push({ d: project(0, 0, 0.8).d + (R.camera.orientation === 'portrait' ? 0 : 50), draw: drawNet, net: true });
-    items.push({ d: project(sh.x, sh.y, sh.z).d - 0.05, draw: () => { drawTrail(); drawShuttle(sh); } });
+    // Волан тоже рисуем на рендер-времени (кроме кадра удара — скорость уже новая).
+    const shTau = sh.state === 'flight' && R.lastHits === sh.hits ? tau : 0;
+    R.lastHits = sh.hits;
+    const shv = shTau ? { ...sh, x: sh.x + sh.vx * shTau, y: sh.y + sh.vy * shTau, z: Math.max(0.02, sh.z + sh.vz * shTau) } : sh;
+    items.push({ d: project(shv.x, shv.y, shv.z).d - 0.05, draw: () => { drawTrail(); drawShuttle(shv); } });
     items.sort((a, b) => b.d - a.d);
     for (const it of items) it.draw();
 

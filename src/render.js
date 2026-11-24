@@ -1,11 +1,17 @@
 /**
- * render.js — 2.5D-отрисовка (canvas 2D, настоящая перспективная проекция).
+ * render.js — 2.5D-отрисовка (canvas 2D, настоящая перспективная проекция) в стиле аниме-спортсериала.
  *
  * Камера всегда ставит команду человека «ближе к зрителю»:
  *   портрет  — камера за задней линией человека (корт вдоль экрана);
  *   альбом   — камера сбоку (человек слева, соперник справа).
- * Модуль только ЧИТАЕТ состояние игры и подписывается на события —
- * его можно целиком заменить (визуальный агент), сохранив API ниже.
+ * Поверх базовой камеры — плавный «вид» (масштаб + сдвиг экрана): отъезд, чтобы высокий
+ * волан оставался в кадре, наезд на матчболе, тряска на смэше. Это равномерное
+ * масштабирование экрана, поэтому направления (screenDirToWorld) не меняются.
+ *
+ * Модуль только ЧИТАЕТ состояние игры и подписывается на события.
+ *   render/arena.js    — зал: трибуны, зрители, борта, корт, свет;
+ *   render/effects.js  — аниме-эффекты (кадры удара, линии скорости, ономатопея, частицы);
+ *   render/character.js — персонажи.
  *
  * Публичный API (не менять сигнатуры):
  *   createRenderer(canvas) -> Renderer
@@ -19,19 +25,14 @@
  */
 import { COURT } from './config.js';
 import { predictLanding } from './physics.js';
-import { SHOT_LABELS } from './shots.js';
 import { createCharacters } from './render/character.js';
+import { createArena, FONT_DISPLAY } from './render/arena.js';
+import { createEffects } from './render/effects.js';
 import { drawControlsOverlay } from './controlsOverlay.js';
 
 const C = {
-  bgTop: '#0e1a2b', bgBot: '#1b2d45',
-  wood: '#a86f3e', woodDark: '#8a5a32', woodLine: 'rgba(60,30,10,0.18)',
-  mat: '#1f5fa8', matOut: '#17487f', line: '#f4f7fb',
-  netMesh: 'rgba(235,240,250,0.33)', netTape: '#ffffff', post: '#d8dde6',
-  shadow: 'rgba(0,0,0,0.28)',
-  hud: 'rgba(8,14,26,0.72)', hudText: '#ffffff', hudDim: 'rgba(255,255,255,0.6)',
-  skin: '#f1c7a5', hair: '#2b1c14', shorts: '#1c2433', shoe: '#f5f5f5',
-  shuttleCork: '#f7f2e8', shuttleFeather: '#ffffff', trail: 'rgba(255,255,255,',
+  netMesh: 'rgba(240,244,255,0.42)', netTape: '#ffffff', post: '#e9ecf6', postDark: '#8d93b5',
+  hudInk: 'rgba(27,15,58,0.86)', hudText: '#ffffff', hudDim: 'rgba(255,255,255,0.62)',
 };
 
 function v3sub(a, b) { return [a[0] - b[0], a[1] - b[1], a[2] - b[2]]; }
@@ -39,7 +40,9 @@ function v3cross(a, b) { return [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] *
 function v3dot(a, b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
 function v3norm(a) { const l = Math.hypot(a[0], a[1], a[2]) || 1; return [a[0] / l, a[1] / l, a[2] / l]; }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
-function lerp(a, b, t) { return a + (b - a) * t; }
+
+/** Минимальный масштаб «отъезда» (чтобы видеть высокий волан). */
+const K_MIN = { portrait: 0.86, landscape: 0.8 };
 
 export function createRenderer(canvas) {
   const ctx = canvas.getContext('2d');
@@ -47,14 +50,14 @@ export function createRenderer(canvas) {
     canvas, ctx, w: 1, h: 1, dpr: 1,
     camera: { orientation: 'portrait', humanSide: -1, eye: [0, 0, 0], r: [1, 0, 0], u: [0, 0, 1], f: [0, 1, 0], F: 1, ox: 0, oy: 0 },
     hudRect: { x: 0, y: 0, w: 0, h: 0 },
-    trail: [],
-    banners: [],      // {text, sub, color, t, life, big}
-    flashes: [],      // вспышки удара {x,y,z,t,color}
+    view: { k: 1, tx: 0, ty: 0, dpr: 1, kHigh: 1 },
     landMarks: [],    // {x,y,t,in}
-    shake: 0,
     game: null,
     time: 0,
   };
+  const arena = createArena();
+  const fx = createEffects();
+  R.arena = arena; R.fx = fx;
 
   function setupCamera(humanSide) {
     const cam = R.camera;
@@ -90,15 +93,30 @@ export function createRenderer(canvas) {
     cam.ox = padX + (availW - (maxX - minX) * F) / 2 - minX * F;
     cam.oy = padTop + (availH - (maxY - minY) * F) / 2 - minY * F;
     R.hudRect = { x: 0, y: 0, w: R.w, h: hudH };
+    // Якоря вида: центр сетки (наезд) и ближняя кромка корта (отъезд к высокому волану).
+    const nearEdge = portrait ? baseProject(s * COURT.HALF_LENGTH, 0, 0) : baseProject(0, s * COURT.HALF_WIDTH_DOUBLES, 0);
+    R.anchor = { x: R.w / 2, yNet: baseProject(0, 0, 1).y, yLow: Math.min(R.h - 10, nearEdge.y) };
+    const kmin = K_MIN[cam.orientation];
+    arena.build({
+      w: R.w, h: R.h, dpr: R.dpr, cam, humanSide: s, portrait,
+      margin: { x: Math.ceil(R.w / 2 * (1 / kmin - 1)) + 14, y: Math.ceil(R.anchor.yLow * (1 / kmin - 1)) + 14 },
+    });
+  }
+
+  /** Проекция базовой камеры (без «вида»). */
+  function baseProject(x, y, z) {
+    const cam = R.camera, e = cam.eye, f = cam.f, r = cam.r, u = cam.u;
+    const dx = x - e[0], dy = y - e[1], dz = z - e[2];
+    const cz = Math.max(0.1, dx * f[0] + dy * f[1] + dz * f[2]);
+    return { x: cam.ox + cam.F * (dx * r[0] + dy * r[1] + dz * r[2]) / cz, y: cam.oy - cam.F * (dx * u[0] + dy * u[1] + dz * u[2]) / cz, s: cam.F / cz, d: cz };
   }
 
   function project(x, y, z) {
-    const cam = R.camera;
-    const d = [x - cam.eye[0], y - cam.eye[1], z - cam.eye[2]];
-    const cz = Math.max(0.1, v3dot(d, cam.f));
-    const sx = cam.ox + cam.F * v3dot(d, cam.r) / cz;
-    const sy = cam.oy - cam.F * v3dot(d, cam.u) / cz;
-    return { x: sx, y: sy, s: cam.F / cz, d: cz };
+    const cam = R.camera, e = cam.eye, f = cam.f, r = cam.r, u = cam.u, V = R.view;
+    const dx = x - e[0], dy = y - e[1], dz = z - e[2];
+    const cz = Math.max(0.1, dx * f[0] + dy * f[1] + dz * f[2]);
+    const F = cam.F * V.k;
+    return { x: cam.ox * V.k + V.tx + F * (dx * r[0] + dy * r[1] + dz * r[2]) / cz, y: cam.oy * V.k + V.ty - F * (dx * u[0] + dy * u[1] + dz * u[2]) / cz, s: F / cz, d: cz };
   }
   R.project = project;
 
@@ -107,9 +125,9 @@ export function createRenderer(canvas) {
     const cam = R.camera;
     // Правый вектор камеры и «вперёд по полу».
     const rx = cam.r[0], ry = cam.r[1];
-    let fx = cam.f[0], fy = cam.f[1];
-    const fl = Math.hypot(fx, fy) || 1; fx /= fl; fy /= fl;
-    return { x: rx * sx + fx * sy, y: ry * sx + fy * sy };
+    let fx_ = cam.f[0], fy = cam.f[1];
+    const fl = Math.hypot(fx_, fy) || 1; fx_ /= fl; fy /= fl;
+    return { x: rx * sx + fx_ * sy, y: ry * sx + fy * sy };
   };
 
   R.resize = function (cssW, cssH, dpr) {
@@ -118,52 +136,48 @@ export function createRenderer(canvas) {
     canvas.height = Math.round(cssH * dpr);
     canvas.style.width = cssW + 'px';
     canvas.style.height = cssH + 'px';
+    R.view.dpr = dpr;
     setupCamera(R.camera.humanSide);
   };
 
   R.attach = function (game) {
     R.game = game;
-    game.on('hit', e => {
-      chars.onHit(e, game);
-      const sh = game.shuttle;
-      const human = e.player.controller === 'human';
-      R.flashes.push({ x: sh.x, y: sh.y, z: sh.z, t: 0, perfect: e.timing === 'perfect', color: e.player.color });
-      if (R.flashes.length > 4) R.flashes.shift();
-      if (e.type === 'smash' && e.speed > 40) {
-        R.shake = Math.min(1, 0.35 + (e.speed - 40) / 40);
-        if (human || e.speed > 47) banner('СМЭШ!', null, '#ffd23f', 0.9, true);
-      } else if (human && !e.serve && e.timing === 'perfect') {
-        banner('Идеально!', SHOT_LABELS[e.type], '#7cf29c', 0.8, false);
-      } else if (human && !e.serve && e.quality < 0.45) {
-        banner(e.timing === 'early' ? 'Рано' : 'Поздно', null, '#ffb4a2', 0.6, false);
-      }
-    });
-    game.on('whiff', e => { if (e.player.controller === 'human') banner('Мимо!', null, '#ffb4a2', 0.7, false); });
+    fx.teamName = t => teamName(game, t);
+    game.on('hit', e => { chars.onHit(e, game); });
     game.on('land', e => { R.landMarks.push({ x: e.x, y: e.y, t: 0, in: e.in }); if (R.landMarks.length > 3) R.landMarks.shift(); });
-    game.on('point', e => {
-      const txt = { in: 'Очко!', out: 'Аут!', net: 'Сетка!', serveFault: 'Ошибка подачи' }[e.reason];
-      const humanTeam = game.human ? game.human.team : 0;
-      const col = e.winner === humanTeam ? '#7cf29c' : '#ff8a80';
-      const who = teamName(game, e.winner);
-      banner(txt, 'Очко: ' + who, col, 1.3, true);
-    });
-    game.on('game', e => {
-      if (!game.match.over) banner('Гейм!', teamName(game, e.winner) + ' — ' + e.games.join(':'), '#ffd23f', 2.4, true);
-    });
-    game.on('sides', () => banner('Смена сторон', null, '#9ad1ff', 1.6, false));
+    fx.attach(game, R);
   };
-
-  function banner(text, sub, color, life, big) {
-    R.banners = R.banners.filter(b => !(big && b.big) && b.text !== text);
-    R.banners.push({ text, sub, color, t: 0, life, big });
-    if (R.banners.length > 3) R.banners.splice(0, R.banners.length - 3);
-  }
 
   function teamName(game, team) {
     const ps = game.players.filter(p => p.team === team);
     const hasHuman = ps.some(p => p.controller === 'human');
     if (hasHuman) return game.cfg.mode === 'doubles' ? 'Ваша пара' : 'Вы';
     return ps.map(p => p.name.split(' ')[0]).join(' и ');
+  }
+
+  // ---------------------------------------------------------------- вид (камера поверх базы)
+  function updateView(game, dt) {
+    const V = R.view, cam = R.camera, A = R.anchor;
+    const kmin = K_MIN[cam.orientation];
+    // Отъезд к высокому волану.
+    const sh = game.shuttle;
+    let kHighT = 1;
+    if (sh && sh.state === 'flight' && game.phase === 'rally') {
+      const b = baseProject(sh.x, sh.y, sh.z + 0.35);
+      const target = R.hudRect.h + 30;
+      if (b.y < target) kHighT = clamp((A.yLow - target) / Math.max(1, A.yLow - b.y), kmin, 1);
+    }
+    const rate = kHighT < V.kHigh ? 7 : 1.6;
+    V.kHigh += (kHighT - V.kHigh) * Math.min(1, dt * rate);
+    const kFx = fx.view.zoom;
+    // Композиция: сначала наезд вокруг сетки, затем отъезд вокруг нижней кромки.
+    const k = V.kHigh * kFx;
+    const ax = A.x;
+    // screen = Alow + (Anet + (b − Anet)·kFx − Alow)·kHigh
+    const t1x = ax * (1 - kFx), t1y = A.yNet * (1 - kFx);
+    V.k = k;
+    V.tx = ax + (t1x - ax) * V.kHigh + fx.view.shake.x;
+    V.ty = A.yLow + (t1y - A.yLow) * V.kHigh + fx.view.shake.y;
   }
 
   // ---------------------------------------------------------------- сцена
@@ -174,47 +188,44 @@ export function createRenderer(canvas) {
     ctx.fillStyle = fill; ctx.fill();
   }
 
-  function lineQuad(x0, y0, x1, y1, w) {
-    // Линия на полу как тонкий прямоугольник шириной w.
-    const dx = x1 - x0, dy = y1 - y0, l = Math.hypot(dx, dy) || 1;
-    const nx = -dy / l * w / 2, ny = dx / l * w / 2;
-    poly([[x0 + nx, y0 + ny], [x1 + nx, y1 + ny], [x1 - nx, y1 - ny], [x0 - nx, y0 - ny]], C.line);
-  }
-
-  function drawFloor(game) {
-    const g = ctx.createLinearGradient(0, 0, 0, R.h);
-    g.addColorStop(0, C.bgTop); g.addColorStop(1, C.bgBot);
-    ctx.fillStyle = g; ctx.fillRect(0, 0, R.w, R.h);
-    // Деревянный пол зала.
-    const FL = 34, FW = 22;
-    poly([[-FL, -FW], [FL, -FW], [FL, FW], [-FL, FW]], C.wood);
-    ctx.strokeStyle = C.woodLine; ctx.lineWidth = 1;
-    for (let y = -FW; y <= FW; y += 0.55) {
-      const a = project(-FL, y, 0), b = project(FL, y, 0);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-    // Покрытие корта (с полосой вокруг).
-    const L = COURT.HALF_LENGTH, W = COURT.HALF_WIDTH_DOUBLES;
-    poly([[-L - 0.9, -W - 0.7], [L + 0.9, -W - 0.7], [L + 0.9, W + 0.7], [-L - 0.9, W + 0.7]], C.matOut);
-    poly([[-L, -W], [L, -W], [L, W], [-L, W]], C.mat);
-    // Линии.
-    const lw = COURT.LINE_WIDTH;
-    const S = COURT.HALF_WIDTH_SINGLES, SS = COURT.SHORT_SERVICE, DL = COURT.DOUBLES_LONG_SERVICE;
-    const hl = lw / 2;
-    lineQuad(-L + hl, -W, -L + hl, W, lw); lineQuad(L - hl, -W, L - hl, W, lw);          // задние
-    lineQuad(-L, -W + hl, L, -W + hl, lw); lineQuad(-L, W - hl, L, W - hl, lw);          // боковые пар
-    lineQuad(-L, -S + hl, L, -S + hl, lw); lineQuad(-L, S - hl, L, S - hl, lw);          // боковые одиночки
-    for (const s of [-1, 1]) {
-      lineQuad(s * SS, -W, s * SS, W, lw);                                                // короткая подачи
-      lineQuad(s * DL, -W, s * DL, W, lw);                                                // длинная подачи пар
-      lineQuad(s * SS, 0, s * L, 0, lw);                                                  // центральная
-    }
+  function drawFloorDynamic(game, dt) {
     // Подсветка зоны приёма во время подачи.
     if (game.phase === 'serve' && game.serveInfo) {
       const s = game.serveInfo; const box = serviceBoxWorld(game, s);
-      ctx.globalAlpha = 0.16 + 0.06 * Math.sin(R.time * 5);
-      poly([[box.xMin, box.yMin], [box.xMax, box.yMin], [box.xMax, box.yMax], [box.xMin, box.yMax]], '#ffe27a');
+      const pts = [[box.xMin, box.yMin], [box.xMax, box.yMin], [box.xMax, box.yMax], [box.xMin, box.yMax]];
+      ctx.globalAlpha = 0.2 + 0.08 * Math.sin(R.time * 5);
+      poly(pts, '#fff1a8');
+      ctx.globalAlpha = 0.85;
+      ctx.strokeStyle = '#fff1a8'; ctx.lineWidth = 2; ctx.setLineDash([7, 5]); ctx.lineDashOffset = -R.time * 20;
+      ctx.stroke();
+      ctx.setLineDash([]); ctx.lineDashOffset = 0;
       ctx.globalAlpha = 1;
+    }
+    // Метки приземления.
+    R.landMarks = R.landMarks.filter(m => (m.t += dt) < 1.6);
+    for (const m of R.landMarks) {
+      const p = project(m.x, m.y, 0);
+      const a = 1 - m.t / 1.6;
+      const rr = 0.25 + 0.15 * Math.min(1, m.t * 4);
+      ctx.strokeStyle = m.in ? `rgba(124,242,156,${a})` : `rgba(255,107,107,${a})`;
+      ctx.lineWidth = 3;
+      ctx.beginPath(); ctx.ellipse(p.x, p.y, rr * p.s, rr * p.s * Math.abs(R.camera.f[2]) * 1.2 + 2, 0, 0, Math.PI * 2); ctx.stroke();
+      if (!m.in) {   // крестик «аут»
+        const d = 0.14 * p.s;
+        ctx.beginPath(); ctx.moveTo(p.x - d, p.y - d * 0.5); ctx.lineTo(p.x + d, p.y + d * 0.5); ctx.moveTo(p.x + d, p.y - d * 0.5); ctx.lineTo(p.x - d, p.y + d * 0.5); ctx.stroke();
+      }
+    }
+    // Подсказка приземления для человека (помощник).
+    const sh = game.shuttle;
+    if (game.cfg.assist && game.human && sh.state === 'flight' && sh.lastHitTeam !== game.human.team) {
+      const L = predictLanding(sh);
+      if (!L.netHit && Math.sign(L.x) === game.human.side) {
+        const p = project(L.x, L.y, 0);
+        ctx.strokeStyle = 'rgba(255,241,168,0.7)'; ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath(); ctx.ellipse(p.x, p.y, 0.22 * p.s, 0.22 * p.s * 0.45 + 1, 0, 0, Math.PI * 2); ctx.stroke();
+        ctx.setLineDash([]);
+      }
     }
   }
 
@@ -228,30 +239,51 @@ export function createRenderer(canvas) {
   }
 
   function drawNet() {
-    const W = COURT.NET_POST_Y, H = COURT.NET_HEIGHT;
-    // Сетка (ячейки) — полупрозрачная полоса 0.76 м под лентой.
-    poly([[0, -W, H - 0.76], [0, W, H - 0.76], [0, W, H], [0, -W, H]], 'rgba(20,24,32,0.35)');
-    ctx.strokeStyle = C.netMesh; ctx.lineWidth = 1;
+    const W = COURT.NET_POST_Y, H = COURT.NET_HEIGHT, B = H - 0.76;
+    const wob = !!fx.netHit;
+    const off = (y, z) => (wob ? fx.netOffset(y, z) : 0);
+    // Полотно (затемнение за ячейками).
+    poly([[0, -W, B], [0, W, B], [0, W, H], [0, -W, H]], 'rgba(16,12,40,0.30)');
+    ctx.strokeStyle = C.netMesh; ctx.lineWidth = 0.8;
     ctx.beginPath();
-    for (let y = -W; y <= W + 1e-6; y += 0.18) {
-      const a = project(0, y, H - 0.76), b = project(0, y, H);
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    const zm = (B + H) / 2;
+    for (let y = -W; y <= W + 1e-6; y += 0.1) {
+      const a = project(off(y, B), y, B), m = project(off(y, zm), y, zm), b = project(off(y, H), y, H);
+      ctx.moveTo(a.x, a.y); ctx.lineTo(m.x, m.y); ctx.lineTo(b.x, b.y);
     }
-    for (let z = H - 0.76; z <= H; z += 0.12) {
-      const a = project(0, -W, z), b = project(0, W, z);
-      ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+    for (let z = B; z <= H - 0.04; z += 0.08) {
+      if (wob) {
+        for (let i = 0; i <= 16; i++) { const y = -W + 2 * W * i / 16; const q = project(off(y, z), y, z); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+      } else {
+        const a = project(0, -W, z), b = project(0, W, z);
+        ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y);
+      }
     }
     ctx.stroke();
-    // Лента.
-    const a = project(0, -W, H), b = project(0, W, H);
-    ctx.strokeStyle = C.netTape; ctx.lineWidth = Math.max(2, 0.05 * (a.s + b.s) / 2);
-    ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    // Стойки.
-    for (const y of [-W, W]) {
-      const p0 = project(0, y, 0), p1 = project(0, y, H + 0.02);
-      ctx.strokeStyle = C.post; ctx.lineWidth = Math.max(2, 0.05 * p0.s);
+    // Лента сверху (белая полоса с толщиной) и нижний шнур.
+    ctx.beginPath();
+    for (let i = 0; i <= 16; i++) { const y = -W + 2 * W * i / 16; const q = project(off(y, H), y, H); i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y); }
+    for (let i = 16; i >= 0; i--) { const y = -W + 2 * W * i / 16; const q = project(off(y, H - 0.075), y, H - 0.075); ctx.lineTo(q.x, q.y); }
+    ctx.closePath(); ctx.fillStyle = C.netTape; ctx.fill();
+    ctx.strokeStyle = 'rgba(27,15,58,0.55)'; ctx.lineWidth = 1; ctx.stroke();
+    const b0 = project(0, -W, B), b1 = project(0, W, B);
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 1.2;
+    ctx.beginPath(); ctx.moveTo(b0.x, b0.y); ctx.lineTo(b1.x, b1.y); ctx.stroke();
+    // Стойки с утяжелённым основанием.
+    ctx.lineCap = 'round';
+    for (const y of [-W - 0.02, W + 0.02]) {
+      const p0 = project(0, y, 0), p1 = project(0, y, H + 0.04);
+      const base = project(0, y, 0.02);
+      ctx.fillStyle = '#2b2860';
+      ctx.beginPath(); ctx.ellipse(base.x, base.y, 0.22 * base.s, 0.09 * base.s, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.strokeStyle = C.postDark; ctx.lineWidth = Math.max(3, 0.07 * p0.s);
       ctx.beginPath(); ctx.moveTo(p0.x, p0.y); ctx.lineTo(p1.x, p1.y); ctx.stroke();
+      ctx.strokeStyle = C.post; ctx.lineWidth = Math.max(1.5, 0.035 * p0.s);
+      ctx.beginPath(); ctx.moveTo(p0.x - 0.012 * p0.s, p0.y); ctx.lineTo(p1.x - 0.012 * p1.s, p1.y); ctx.stroke();
+      ctx.fillStyle = '#ff3d6e';
+      ctx.beginPath(); ctx.arc(p1.x, p1.y, Math.max(2, 0.045 * p1.s), 0, Math.PI * 2); ctx.fill();
     }
+    ctx.lineCap = 'butt';
   }
 
   function shadowAt(x, y, rx, alpha) {
@@ -259,7 +291,7 @@ export function createRenderer(canvas) {
     const q = project(x + rx, y, 0), q2 = project(x, y + rx, 0);
     const ax = Math.max(Math.abs(q.x - p.x), Math.abs(q2.x - p.x), 2);
     const ay = Math.max(Math.abs(q.y - p.y), Math.abs(q2.y - p.y), 1.2);
-    ctx.fillStyle = `rgba(0,0,0,${alpha})`;
+    ctx.fillStyle = `rgba(6,30,24,${alpha})`;
     ctx.beginPath(); ctx.ellipse(p.x, p.y, ax, ay, 0, 0, Math.PI * 2); ctx.fill();
   }
 
@@ -283,113 +315,124 @@ export function createRenderer(canvas) {
     const ang = Math.atan2(tail.y - head.y, tail.x - head.x);
     const len = Math.max(5, Math.hypot(tail.x - head.x, tail.y - head.y));
     const minScale = Math.max(1, 0.045 * sc / 3);
+    const wid = Math.max(4, 0.055 * sc) * minScale;
+    // Свечение быстрого волана (цвет удара).
+    if (sh.state === 'flight' && sp > 14) {
+      const a = clamp((sp - 14) / 30, 0, 1) * 0.55;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(head.x, head.y, 0, head.x, head.y, wid * 3.2);
+      g.addColorStop(0, `rgba(255,255,255,${a})`); g.addColorStop(1, 'rgba(255,255,255,0)');
+      ctx.fillStyle = g; ctx.beginPath(); ctx.arc(head.x, head.y, wid * 3.2, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    }
     ctx.save();
     ctx.translate(head.x, head.y);
     ctx.rotate(ang);
-    const wid = Math.max(4, 0.055 * sc) * minScale;
-    // Юбка из перьев (усечённый конус).
-    ctx.fillStyle = 'rgba(255,255,255,0.92)';
+    // Юбка из перьев (усечённый конус) с контуром (cel).
+    ctx.fillStyle = '#ffffff';
+    ctx.strokeStyle = '#1b0f3a'; ctx.lineWidth = 1.1; ctx.lineJoin = 'round';
     ctx.beginPath();
     ctx.moveTo(1, -wid * 0.35); ctx.lineTo(len * 1.5, -wid); ctx.lineTo(len * 1.5, wid); ctx.lineTo(1, wid * 0.35);
-    ctx.closePath(); ctx.fill();
-    ctx.strokeStyle = 'rgba(120,130,150,0.8)'; ctx.lineWidth = 0.8;
-    ctx.beginPath(); ctx.moveTo(len * 0.6, -wid * 0.7); ctx.lineTo(len * 0.6, wid * 0.7); ctx.stroke();
-    // Пробковая головка.
-    ctx.fillStyle = '#e7d3b0';
-    ctx.beginPath(); ctx.arc(0, 0, wid * 0.55, 0, Math.PI * 2); ctx.fill();
+    ctx.closePath(); ctx.fill(); ctx.stroke();
+    ctx.strokeStyle = 'rgba(110,120,160,0.85)'; ctx.lineWidth = 0.8;
+    ctx.beginPath();
+    ctx.moveTo(len * 0.6, -wid * 0.7); ctx.lineTo(len * 0.6, wid * 0.7);
+    ctx.moveTo(1, 0); ctx.lineTo(len * 1.5, 0);
+    ctx.stroke();
+    // Пробковая головка с цветным ободком.
+    ctx.fillStyle = '#efd9b4'; ctx.strokeStyle = '#1b0f3a'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(0, 0, wid * 0.55, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+    ctx.fillStyle = fx.trailColor || '#ff3d6e';
+    ctx.fillRect(wid * 0.25, -wid * 0.5, wid * 0.18, wid);
     ctx.restore();
   }
 
-  function drawTrail() {
-    const t = R.trail;
-    for (let i = 1; i < t.length; i++) {
-      const a = project(t[i - 1].x, t[i - 1].y, t[i - 1].z), b = project(t[i].x, t[i].y, t[i].z);
-      const k = i / t.length;
-      ctx.strokeStyle = C.trail + (0.35 * k * t[i].alpha).toFixed(3) + ')';
-      ctx.lineWidth = Math.max(1, 0.04 * b.s * k);
-      ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(b.x, b.y); ctx.stroke();
-    }
-  }
-
-  // ---------------------------------------------------------------- HUD
+  // ---------------------------------------------------------------- HUD (аниме-трансляция)
   function drawHUD(game) {
     const m = game.match; if (!m) return;
     const portrait = R.camera.orientation === 'portrait';
-    const hr = R.hudRect;
     const humanTeam = game.human ? game.human.team : 0;
     const teams = [humanTeam, 1 - humanTeam];
     // Справа оставляем место под кнопку паузы (44px + отступы).
     const cw = Math.min(R.w - 12 - 66, 460), ch = portrait ? 56 : 44;
     const x0 = Math.max(12, Math.min((R.w - cw) / 2, R.w - 66 - cw)), y0 = portrait ? 10 : 6;
-    ctx.fillStyle = C.hud;
-    roundRect(x0, y0, cw, ch, 14); ctx.fill();
-    ctx.textBaseline = 'middle';
     const mid = x0 + cw / 2;
-    const fs = portrait ? 30 : 26;
-    ctx.font = `800 ${fs}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-    ctx.textAlign = 'right'; ctx.fillStyle = C.hudText;
-    ctx.fillText(String(m.score[teams[0]]), mid - 14, y0 + ch / 2 + 1);
+    const sk = ch * 0.32;   // скос
+    // Подложка: тёмная параллелограмм-плашка.
+    ctx.fillStyle = C.hudInk;
+    ctx.beginPath(); ctx.moveTo(x0 + sk, y0); ctx.lineTo(x0 + cw, y0); ctx.lineTo(x0 + cw - sk, y0 + ch); ctx.lineTo(x0, y0 + ch); ctx.closePath(); ctx.fill();
+    // Центр счёта — светлый блок.
+    const sw = Math.min(cw * 0.36, portrait ? 126 : 132);
+    ctx.fillStyle = '#ffffff';
+    ctx.beginPath(); ctx.moveTo(mid - sw / 2 + sk * 0.6, y0 + 4); ctx.lineTo(mid + sw / 2 + sk * 0.6, y0 + 4); ctx.lineTo(mid + sw / 2 - sk * 0.6, y0 + ch - 4); ctx.lineTo(mid - sw / 2 - sk * 0.6, y0 + ch - 4); ctx.closePath(); ctx.fill();
+    const colors = teams.map(t => { const p = game.players.find(q => q.team === t); return (p && p.color) || '#fff'; });
+    // Цветные полосы команд на краях плашки.
+    ctx.fillStyle = colors[0];
+    ctx.beginPath(); ctx.moveTo(x0 + sk, y0); ctx.lineTo(x0 + sk + 7, y0); ctx.lineTo(x0 + 7, y0 + ch); ctx.lineTo(x0, y0 + ch); ctx.closePath(); ctx.fill();
+    ctx.fillStyle = colors[1];
+    ctx.beginPath(); ctx.moveTo(x0 + cw - 7, y0); ctx.lineTo(x0 + cw, y0); ctx.lineTo(x0 + cw - sk, y0 + ch); ctx.lineTo(x0 + cw - sk - 7, y0 + ch); ctx.closePath(); ctx.fill();
+    ctx.textBaseline = 'middle';
+    const fs = portrait ? 27 : 23;
+    ctx.font = `900 ${fs}px ${FONT_DISPLAY}`;
+    ctx.fillStyle = '#1b0f3a';
+    ctx.textAlign = 'right';
+    ctx.fillText(String(m.score[teams[0]]), mid - 10, y0 + ch / 2 + 1);
     ctx.textAlign = 'left';
-    ctx.fillText(String(m.score[teams[1]]), mid + 14, y0 + ch / 2 + 1);
-    ctx.textAlign = 'center'; ctx.fillStyle = C.hudDim; ctx.font = `700 ${fs * 0.7}px system-ui, sans-serif`;
-    ctx.fillText(':', mid, y0 + ch / 2);
+    ctx.fillText(String(m.score[teams[1]]), mid + 10, y0 + ch / 2 + 1);
+    ctx.textAlign = 'center'; ctx.fillStyle = 'rgba(27,15,58,0.45)';
+    ctx.fillRect(mid - 1.5, y0 + ch * 0.3, 3, ch * 0.4);
     // Имена + индикатор подачи.
-    const nfs = portrait ? 13 : 12;
-    ctx.font = `600 ${nfs}px system-ui, sans-serif`;
+    const nfs = portrait ? 12 : 11;
     const names = teams.map(t => teamName(game, t));
-    const colors = teams.map(t => game.players.find(p => p.team === t).color);
+    const sideW = (cw - sw) / 2 - sk - 10;
     for (let i = 0; i < 2; i++) {
       const left = i === 0;
-      const tx = left ? x0 + 14 : x0 + cw - 14;
+      const tx = left ? x0 + sk + 12 : x0 + cw - sk - 12;
       ctx.textAlign = left ? 'left' : 'right';
-      ctx.fillStyle = colors[i];
-      ctx.fillRect(left ? x0 + 6 : x0 + cw - 10, y0 + 10, 4, ch - 20);
       ctx.fillStyle = C.hudText;
-      ctx.fillText(truncate(names[i], cw < 340 ? 9 : portrait ? 13 : 18), tx + (left ? 4 : -4), y0 + ch / 2 - (m.format.games > 1 ? 7 : 0));
+      let nf = nfs;
+      ctx.font = `700 ${nf}px ${FONT_DISPLAY}`;
+      let name = names[i];
+      const room = sideW - 18;
+      while (nf > 9 && ctx.measureText(name).width > room) { nf--; ctx.font = `700 ${nf}px ${FONT_DISPLAY}`; }
+      while (name.length > 2 && ctx.measureText(name).width > room) name = name.slice(0, -2) + '…';
+      ctx.fillText(name, tx, y0 + ch / 2 - (m.format.games > 1 ? 7 : 0));
       if (m.format.games > 1) {
-        ctx.fillStyle = C.hudDim; ctx.font = `500 ${nfs - 2}px system-ui, sans-serif`;
-        ctx.fillText('геймы: ' + m.games[teams[i]], tx + (left ? 4 : -4), y0 + ch / 2 + 9);
-        ctx.font = `600 ${nfs}px system-ui, sans-serif`;
+        // Геймы — точки.
+        for (let g = 0; g < Math.ceil(m.format.games / 2); g++) {
+          ctx.fillStyle = g < m.games[teams[i]] ? '#ffd23f' : 'rgba(255,255,255,0.25)';
+          const gx = left ? tx + 4 + g * 11 : tx - 4 - g * 11;
+          ctx.beginPath(); ctx.arc(gx, y0 + ch / 2 + 9, 3.5, 0, Math.PI * 2); ctx.fill();
+        }
       }
       if (m.serverTeam === teams[i] && !m.over) {
-        const sx = left ? mid - 14 - fs * 1.4 : mid + 14 + fs * 1.4;
-        ctx.fillStyle = '#ffe27a';
-        ctx.beginPath(); ctx.arc(sx, y0 + ch / 2, 4, 0, Math.PI * 2); ctx.fill();
+        const sx = left ? mid - sw / 2 - sk * 0.6 - 2 : mid + sw / 2 + sk * 0.6 + 2;
+        drawServeGlyph(sx, y0 + ch / 2, left);
       }
     }
-  }
-  function truncate(s, n) { return s.length > n ? s.slice(0, n - 1) + '…' : s; }
-  function roundRect(x, y, w, h, r) {
-    ctx.beginPath(); ctx.moveTo(x + r, y); ctx.arcTo(x + w, y, x + w, y + h, r); ctx.arcTo(x + w, y + h, x, y + h, r);
-    ctx.arcTo(x, y + h, x, y, r); ctx.arcTo(x, y, x + w, y, r); ctx.closePath();
-  }
-
-  function drawBanners(dt) {
-    const portrait = R.camera.orientation === 'portrait';
-    R.banners = R.banners.filter(b => (b.t += dt) < b.life);
-    let y = R.h * (portrait ? 0.4 : 0.36);
-    for (const b of R.banners) {
-      const k = b.t / b.life;
-      const a = k < 0.12 ? k / 0.12 : k > 0.75 ? (1 - k) / 0.25 : 1;
-      const scale = b.big ? 1 + 0.25 * Math.max(0, 1 - b.t / 0.18) : 1;
-      ctx.save();
-      ctx.globalAlpha = a;
-      ctx.translate(R.w / 2, y);
-      ctx.scale(scale, scale);
-      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
-      const fs = b.big ? (portrait ? 40 : 36) : 22;
-      ctx.font = `900 ${fs}px system-ui, -apple-system, Segoe UI, Roboto, sans-serif`;
-      ctx.lineWidth = 6; ctx.strokeStyle = 'rgba(0,0,0,0.55)';
-      ctx.strokeText(b.text, 0, 0);
-      ctx.fillStyle = b.color; ctx.fillText(b.text, 0, 0);
-      if (b.sub) {
-        ctx.font = `700 ${Math.round(fs * 0.42)}px system-ui, sans-serif`;
-        ctx.lineWidth = 4; ctx.strokeText(b.sub, 0, fs * 0.75);
-        ctx.fillStyle = '#ffffff'; ctx.fillText(b.sub, 0, fs * 0.75);
-      }
-      ctx.restore();
-      y += b.big ? 70 : 34;
+    // Матчбол/геймбол — ярлык под табло.
+    if (fx.matchPoint || fx.gamePoint) {
+      const txt = fx.matchPoint ? 'МАТЧБОЛ' : 'ГЕЙМБОЛ';
+      ctx.font = `800 10px ${FONT_DISPLAY}`;
+      const tw = ctx.measureText(txt).width + 18;
+      const pulse = fx.reduced ? 1 : 0.75 + 0.25 * Math.sin(R.time * 6);
+      ctx.globalAlpha = pulse;
+      ctx.fillStyle = fx.matchPoint ? '#ff3d6e' : '#ffd23f';
+      ctx.beginPath(); ctx.moveTo(mid - tw / 2 + 4, y0 + ch); ctx.lineTo(mid + tw / 2 + 4, y0 + ch); ctx.lineTo(mid + tw / 2 - 4, y0 + ch + 15); ctx.lineTo(mid - tw / 2 - 4, y0 + ch + 15); ctx.closePath(); ctx.fill();
+      ctx.fillStyle = fx.matchPoint ? '#ffffff' : '#1b0f3a'; ctx.textAlign = 'center';
+      ctx.fillText(txt, mid, y0 + ch + 8);
+      ctx.globalAlpha = 1;
     }
+  }
+  function drawServeGlyph(x, y, left) {
+    // Маленький волан — «подаёт».
+    ctx.save();
+    ctx.translate(x, y); ctx.rotate(left ? Math.PI : 0);
+    ctx.fillStyle = '#ffd23f';
+    ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(9, -5); ctx.lineTo(9, 5); ctx.closePath(); ctx.fill();
+    ctx.beginPath(); ctx.arc(0, 0, 3, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   // ---------------------------------------------------------------- кадр
@@ -401,7 +444,7 @@ export function createRenderer(canvas) {
    * (0 на паузе и в замороженных тестах).
    */
   const SIM_DT = 1 / 120;
-  R.clk = 0; R.clkGame = null; R.rate = 1; R.lastGT = 0; R.animDt = 0; R.lastHits = -1;
+  R.clk = 0; R.clkGame = null; R.rate = 1; R.lastGT = 0; R.animDt = 0;
   function renderClock(game, dt) {
     const gt = game.time || 0;
     const prev = R.clk;
@@ -424,81 +467,63 @@ export function createRenderer(canvas) {
     R.time += dt;
     const humanSide = game.human ? game.human.side : (game.players[0] ? game.players[0].side : -1);
     if (humanSide !== R.camera.humanSide) setupCamera(humanSide);
+    fx.update(dt, game);
+    arena.update(dt);
+    updateView(game, dt);
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
-    // Тряска камеры.
-    if (R.shake > 0) {
-      R.shake = Math.max(0, R.shake - dt * 3);
-      const a = R.shake * 6;
-      ctx.translate((Math.random() - 0.5) * a, (Math.random() - 0.5) * a);
-    }
-    drawFloor(game);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
+    arena.drawBack(ctx, R.view, R.time, game, fx.reduced);
+    drawFloorDynamic(game, dt);
+
     const tau = renderClock(game, dt);
-    const animDt = Math.min(0.1, Math.max(R.animDt, game.phase === 'over' ? dt : 0));
+    // Стоп-кадр (hit-stop): всё рисуется с дополнительным отставанием lag.
+    const lag = fx.view.lag;
+    const tauV = tau - lag;
+    const frozen = fx.hitStop > 0;
+    const animDt = frozen ? 0 : Math.min(0.1, Math.max(R.animDt, game.phase === 'over' ? dt : 0));
     const sh = game.shuttle;
-    // Метки приземления.
-    R.landMarks = R.landMarks.filter(m => (m.t += dt) < 1.6);
-    for (const m of R.landMarks) {
-      const p = project(m.x, m.y, 0);
-      ctx.strokeStyle = m.in ? `rgba(124,242,156,${1 - m.t / 1.6})` : `rgba(255,120,110,${1 - m.t / 1.6})`;
-      ctx.lineWidth = 2.5;
-      ctx.beginPath(); ctx.ellipse(p.x, p.y, 0.25 * p.s, 0.25 * p.s * Math.abs(R.camera.f[2]) * 1.2 + 2, 0, 0, Math.PI * 2); ctx.stroke();
-    }
-    // Подсказка приземления для человека (помощник).
-    if (game.cfg.assist && game.human && sh.state === 'flight' && sh.lastHitTeam !== game.human.team) {
-      const L = predictLanding(sh);
-      if (!L.netHit && Math.sign(L.x) === game.human.side) {
-        const p = project(L.x, L.y, 0);
-        ctx.strokeStyle = 'rgba(255,226,122,0.55)'; ctx.lineWidth = 2;
-        ctx.setLineDash([4, 4]);
-        ctx.beginPath(); ctx.ellipse(p.x, p.y, 0.22 * p.s, 0.22 * p.s * 0.45 + 1, 0, 0, Math.PI * 2); ctx.stroke();
-        ctx.setLineDash([]);
-      }
-    }
-    // Тень волана.
-    if (sh.state !== 'held' || game.phase === 'serve') shadowAt(sh.x, sh.y, 0.05 + Math.min(0.08, sh.z * 0.01), clamp(0.45 - sh.z * 0.04, 0.12, 0.45));
-    // След.
+    // Волан на рендер-времени, но не раньше последнего удара (скорость уже новая).
+    let shTau = 0;
     if (sh.state === 'flight') {
-      const sp = Math.hypot(sh.vx, sh.vy, sh.vz);
-      R.trail.push({ x: sh.x, y: sh.y, z: sh.z, alpha: clamp(sp / 20, 0.2, 1) });
-      if (R.trail.length > 22) R.trail.shift();
-    } else if (R.trail.length) R.trail.shift();
+      const since = fx.hitGameTime >= 0 && fx.hitGameTime <= game.time ? game.time - fx.hitGameTime : 0;
+      shTau = Math.max(tauV, -since);
+    }
+    const shv = shTau ? { ...sh, x: sh.x + sh.vx * shTau, y: sh.y + sh.vy * shTau, z: Math.max(0.02, sh.z + sh.vz * shTau) } : sh;
+    fx.pushTrail(shv);
+    // Тень волана.
+    if (sh.state !== 'held' || game.phase === 'serve') shadowAt(shv.x, shv.y, 0.05 + Math.min(0.08, shv.z * 0.01), clamp(0.45 - shv.z * 0.04, 0.12, 0.45));
 
     // Сортировка объектов по глубине (дальние — первыми).
     const items = [];
     for (const p of game.players) {
-      chars.prepare(p, game, { x: p.x + p.vx * tau, y: p.y + p.vy * tau }, animDt);
+      chars.prepare(p, game, { x: p.x + p.vx * tauV, y: p.y + p.vy * tauV }, animDt);
       items.push({ d: chars.depth(p), draw: () => chars.draw(p) });
     }
     items.push({ d: project(0, 0, 0.8).d + (R.camera.orientation === 'portrait' ? 0 : 50), draw: drawNet, net: true });
-    // Волан тоже рисуем на рендер-времени (кроме кадра удара — скорость уже новая).
-    const shTau = sh.state === 'flight' && R.lastHits === sh.hits ? tau : 0;
-    R.lastHits = sh.hits;
-    const shv = shTau ? { ...sh, x: sh.x + sh.vx * shTau, y: sh.y + sh.vy * shTau, z: Math.max(0.02, sh.z + sh.vz * shTau) } : sh;
-    items.push({ d: project(shv.x, shv.y, shv.z).d - 0.05, draw: () => { drawTrail(); drawShuttle(shv); } });
+    for (const it of arena.courtItems(ctx, project, game)) items.push(it);
+    items.push({ d: project(shv.x, shv.y, shv.z).d - 0.05, draw: () => { fx.drawTrail(ctx, project, shv); drawShuttle(shv); } });
     items.sort((a, b) => b.d - a.d);
     for (const it of items) it.draw();
 
-    // Вспышки удара.
-    R.flashes = R.flashes.filter(f => (f.t += dt) < 0.3);
-    for (const f of R.flashes) {
-      const p = project(f.x, f.y, f.z);
-      const k = f.t / 0.3;
-      ctx.strokeStyle = f.perfect ? `rgba(255,236,140,${1 - k})` : `rgba(255,255,255,${0.7 * (1 - k)})`;
-      ctx.lineWidth = f.perfect ? 4 : 2.5;
-      ctx.beginPath(); ctx.arc(p.x, p.y, (0.15 + k * (f.perfect ? 0.7 : 0.4)) * p.s, 0, Math.PI * 2); ctx.stroke();
-    }
+    fx.drawWorld(ctx, project);
+    arena.drawGlow(ctx, R.view);
+
     // Волан выше экрана — индикатор.
-    const sp = project(sh.x, sh.y, sh.z);
+    const sp = project(shv.x, shv.y, shv.z);
     if (sh.state === 'flight' && sp.y < R.hudRect.h + 4) {
       const x = clamp(sp.x, 16, R.w - 16), y = R.hudRect.h + 14;
-      ctx.fillStyle = 'rgba(255,255,255,0.85)';
-      ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x - 7, y + 4); ctx.lineTo(x + 7, y + 4); ctx.closePath(); ctx.fill();
-      ctx.font = '600 11px system-ui, sans-serif'; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.fillText(sh.z.toFixed(1) + ' м', x, y + 6);
+      ctx.fillStyle = fx.trailColor || '#ffffff';
+      ctx.strokeStyle = '#1b0f3a'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
+      ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x - 7, y + 4); ctx.lineTo(x + 7, y + 4); ctx.closePath(); ctx.stroke(); ctx.fill();
+      ctx.font = `700 10px ${FONT_DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
+      ctx.lineWidth = 3; ctx.strokeText(sh.z.toFixed(1) + ' м', x, y + 7);
+      ctx.fillStyle = '#ffffff'; ctx.fillText(sh.z.toFixed(1) + ' м', x, y + 7);
     }
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+    fx.drawScreen(ctx, R.w, R.h, project);
+    ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
+    ctx.globalAlpha = 1; ctx.globalCompositeOperation = 'source-over';
     drawHUD(game);
-    drawBanners(dt);
     drawControlsOverlay(ctx, input, { w: R.w, h: R.h, game, project, dt });
   };
 

@@ -178,7 +178,7 @@ function isMine(brain, game, plan, traj) {
   if (game.cfg.mode !== 'doubles') return true;
   const mate = game.players.find(q => q.team === p.team && q !== p);
   if (!mate) return true;
-  const matePlan = interceptPlan(mate, traj, mate.controller === 'human' && !game.aiControlsHuman ? 0.15 : brain.reactLeft, game);
+  const matePlan = interceptPlan(mate, traj, (mate.controller === 'human' || mate.controller === 'remote') && !game.aiControlsHuman ? 0.15 : brain.reactLeft, game);
   if (!plan) return false;
   if (!matePlan) return true;
   // Зональный делёж + запас времени.
@@ -186,7 +186,7 @@ function isMine(brain, game, plan, traj) {
   let zoneMine;
   if (f === 'front-back') zoneMine = (Math.abs(plan.x) < 3.0) === (Math.abs(p.x) <= Math.abs(mate.x));
   else zoneMine = (plan.y < 0) === (p.y <= mate.y);
-  const humanMate = mate.controller === 'human' && !game.aiControlsHuman;
+  const humanMate = (mate.controller === 'human' || mate.controller === 'remote') && !game.aiControlsHuman;
   if (humanMate) {
     // Не мешаем человеку: берём только свою зону или если человек явно не успевает.
     return zoneMine ? matePlan.slack < plan.slack + 0.6 || plan.slack > 0 : (matePlan.slack < -0.15 && plan.slack > 0.05);

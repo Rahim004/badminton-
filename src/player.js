@@ -188,7 +188,7 @@ export function updatePlayer(p, dt, ctx) {
     const braking = (tvx * p.vx + tvy * p.vy) < (p.vx * p.vx + p.vy * p.vy) * 0.5;
     let a = (braking ? PLAYER.DECEL : PLAYER.ACCEL) * dt;
     // Человек отпустил джойстик — останавливаемся чётче, без «скольжения по льду».
-    if (p.controller === 'human' && m < 0.05) a *= 1.35;
+    if ((p.controller === 'human' || p.controller === 'remote') && m < 0.05) a *= 1.35;
     const k = Math.min(1, a / dv);
     p.vx += dvx * k; p.vy += dvy * k;
   }

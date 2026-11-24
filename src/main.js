@@ -11,6 +11,11 @@
  *   setSpeed(k)                — ускорение времени (1 — норма)
  *   runUntil(pred, maxSteps)   — шагать, пока pred(state) не станет true
  *   game, renderer, input, ui, audio — сами объекты
+ *
+ * Онлайн (src/net): window.__net = createNet(game). Пока идёт онлайн-матч, game.netDriver:
+ *   у гостя заменяет симуляцию (frame(dt) показывает снимки хоста), у хоста — шлёт снимки;
+ *   пауза в онлайне не останавливает матч (только меню), свёрнутая вкладка хоста — пауза у всех.
+ *   Отладочное лобби: index.html#netdebug (src/net/debug.js).
  */
 import { PHYSICS } from './config.js';
 import { createGame } from './game.js';
@@ -19,6 +24,7 @@ import { createInput, screenDirToWorldAt } from './input.js';
 import { loadControls, onControlsChange } from './controlsSettings.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
+import { createNet } from './net/index.js';
 
 const canvas = document.getElementById('game');
 const uiRoot = document.getElementById('ui');
@@ -40,8 +46,8 @@ const ui = createUI(uiRoot, {
   onStart(opts) { audio.unlock(); start(opts); },
   onPause() { setPaused(true); },
   onResume() { setPaused(false); },
-  onRestart() { if (lastOpts) start(lastOpts); },
-  onQuit() { running = false; paused = false; game.phase = 'idle'; ui.showMenu(); },
+  onRestart() { if (game.netDriver) { game.netDriver.rematch(); return; } if (lastOpts) start(lastOpts); },
+  onQuit() { if (game.netDriver) game.netDriver.leave(); running = false; paused = false; game.phase = 'idle'; ui.showMenu(); },
 });
 ui.attach(game);
 
@@ -57,6 +63,8 @@ function start(opts) {
 
 function setPaused(p) {
   if (!running) return;
+  // Онлайн: матч не останавливается (меню паузы поверх игры).
+  if (game.netDriver && game.netDriver.online) { paused = p; if (p) ui.showPause(); else ui.hideAll(); return; }
   paused = p; game.paused = p;
   if (p) ui.showPause(); else ui.hideAll();
 }
@@ -65,7 +73,9 @@ game.on('matchOver', e => {
   const team = game.human ? game.human.team : 0;
   const st = game.stats;
   const avg = st.rallies.length ? (st.rallies.reduce((a, b) => a + b, 0) / st.rallies.length).toFixed(1) : '0';
+  const ended = game.match;
   setTimeout(() => {
+    if (game.match !== ended) return;   // уже начался новый матч (быстрый онлайн-реванш)
     running = false;
     ui.showGameOver({ won: e.winner === team, team, gameScores: e.gameScores, statsText: `Розыгрышей: ${st.rallies.length} · средняя длина: ${avg} уд. · идеальных: ${st.perfect}` });
   }, 900);
@@ -116,22 +126,29 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
-document.addEventListener('visibilitychange', () => { if (document.hidden && running && !paused) setPaused(true); });
+document.addEventListener('visibilitychange', () => {
+  if (game.netDriver && game.netDriver.online) { game.netDriver.setHidden(document.hidden); return; }
+  if (document.hidden && running && !paused) setPaused(true);
+});
 resize();
 
 // ------------------------------------------------------------ цикл
 const DT = PHYSICS.DT;
 let acc = 0, last = performance.now();
 function frame(now) {
-  const frameDt = Math.min(0.1, (now - last) / 1000);
+  // Хост онлайн-матча не должен «терять» время на подвисаниях: гости сверяют часы по нему.
+  const frameDt = Math.min(game.netDriver && game.netDriver.online ? 0.25 : 0.1, (now - last) / 1000);
   last = now;
   applyInput(frameDt);
-  if (running && !paused && !frozen) {
+  const nd = game.netDriver;
+  const online = !!(nd && nd.online);
+  if (running && (!paused || online) && !frozen && !(nd && nd.replacesSim)) {
     acc += frameDt * speed;
     let n = 0;
     while (acc >= DT && n < 40) { game.step(DT); acc -= DT; n++; }
     if (n >= 40) acc = 0;
   }
+  if (nd && !frozen) nd.frame(frameDt);
   renderer.render(game, input, frameDt);
   requestAnimationFrame(frame);
 }
@@ -145,6 +162,18 @@ const demoTimer = setInterval(() => {
   for (let i = 0; i < 2; i++) game.step(DT);
 }, 16);
 ui.showMenu();
+
+// ------------------------------------------------------------ онлайн
+const net = createNet(game);
+game.on('netStart', () => {
+  clearInterval(demoTimer);
+  running = true; paused = false; acc = 0; lastOpts = null;
+  game.cfg.assistStrength = controls.assist;
+  ui.hideAll();
+});
+game.on('netEnd', () => { running = false; paused = false; game.paused = false; game.phase = 'idle'; ui.showMenu(); });
+window.__net = net;
+try { if (/netdebug/.test(location.hash + location.search)) import('./net/debug.js').then(m => m.mountNetDebug(net, game)); } catch (_) { /* нет location */ }
 
 // ------------------------------------------------------------ тест-хуки
 window.__game = {

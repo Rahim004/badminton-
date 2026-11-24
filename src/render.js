@@ -395,7 +395,7 @@ export function createRenderer(canvas) {
       ctx.font = `700 ${nf}px ${FONT_DISPLAY}`;
       let name = names[i];
       const room = sideW - 18;
-      while (nf > 9 && ctx.measureText(name).width > room) { nf--; ctx.font = `700 ${nf}px ${FONT_DISPLAY}`; }
+      while (nf > 7 && ctx.measureText(name).width > room) { nf--; ctx.font = `700 ${nf}px ${FONT_DISPLAY}`; }
       while (name.length > 2 && ctx.measureText(name).width > room) name = name.slice(0, -2) + '…';
       ctx.fillText(name, tx, y0 + ch / 2 - (m.format.games > 1 ? 7 : 0));
       if (m.format.games > 1) {

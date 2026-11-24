@@ -9,6 +9,9 @@
  *   V.add/sub/scale/dot/cross/len/norm/lerp/madd
  *   Spring(x0)  .step(target, omega, dt) .snap(x) .kick(dv)   — скалярная пружина
  *   Spring3(v0) .step(target3, omega, dt) .snap(v3)           — векторная пружина
+ *   Wobble(x0, omega, zeta) / Wobble3 — недодемпфированные пружины (вторичная динамика)
+ *   Chain(n, seg)  .step(root, rest, dt)                      — цепочка (хвост, ленты)
+ *   hull2(pts) -> pts                                         — выпуклая оболочка на экране
  *   ik2(S, T, a, b, pole) -> {mid, end}                       — локоть/колено
  *   sampleKeys(times, values, t) -> number[]                  — эрмитов сплайн по ключам
  *   clamp, lerp, smoothstep, easeOutCubic, easeInQuad, easeInOutSine, angleWrap
@@ -59,6 +62,75 @@ export class Spring3 {
   step(t, omega, dt) { return [this.s[0].step(t[0], omega, dt), this.s[1].step(t[1], omega, dt), this.s[2].step(t[2], omega, dt)]; }
   get x() { return [this.s[0].x, this.s[1].x, this.s[2].x]; }
   snap(v) { for (let i = 0; i < 3; i++) this.s[i].snap(v[i]); }
+}
+
+/**
+ * Недодемпфированная пружина (вторичная динамика: волосы, ленты, подол).
+ * omega — собственная частота (рад/с), zeta < 1 — покачивание с затуханием.
+ * Полунеявный Эйлер с подшагами — устойчиво при dt до 0.1 с.
+ */
+export class Wobble {
+  constructor(x = 0, omega = 14, zeta = 0.35) { this.x = x; this.v = 0; this.omega = omega; this.zeta = zeta; }
+  step(target, dt) {
+    if (!(dt > 0)) return this.x;
+    const n = Math.min(8, Math.ceil(dt / 0.012));
+    const h = dt / n, w = this.omega, z = this.zeta;
+    for (let i = 0; i < n; i++) {
+      this.v += (-(w * w) * (this.x - target) - 2 * z * w * this.v) * h;
+      this.x += this.v * h;
+    }
+    return this.x;
+  }
+  snap(x) { this.x = x; this.v = 0; }
+  kick(dv) { this.v += dv; }
+}
+
+export class Wobble3 {
+  constructor(v = [0, 0, 0], omega = 14, zeta = 0.35) { this.s = [0, 1, 2].map(i => new Wobble(v[i], omega, zeta)); this.init = false; }
+  step(t, dt) {
+    if (!this.init) { this.snap(t); this.init = true; }
+    return [this.s[0].step(t[0], dt), this.s[1].step(t[1], dt), this.s[2].step(t[2], dt)];
+  }
+  get x() { return [this.s[0].x, this.s[1].x, this.s[2].x]; }
+  snap(v) { for (let i = 0; i < 3; i++) this.s[i].snap(v[i]); }
+}
+
+/**
+ * Цепочка с вторичной динамикой (хвост, ленты повязки): узлы тянутся пружинами
+ * к «позе покоя» относительно предыдущего узла, длина звеньев сохраняется.
+ * rest(i, prev) -> [x,y,z] — целевая точка узла i при родителе prev.
+ */
+export class Chain {
+  constructor(n, seg, omega = 16, zeta = 0.3) { this.n = n; this.seg = seg; this.nodes = Array.from({ length: n }, () => new Wobble3([0, 0, 0], omega, zeta)); this.pts = []; }
+  step(root, rest, dt, maxLag = 1) {
+    const out = [root];
+    let prev = root;
+    for (let i = 0; i < this.n; i++) {
+      const target = rest(i, prev);
+      let p = this.nodes[i].step(target, dt);
+      // жёсткость: не дальше maxLag*seg от цели и ровно seg от родителя
+      let d = V.sub(p, target), dl = V.len(d);
+      if (dl > maxLag * this.seg) { p = V.madd(target, d, maxLag * this.seg / dl); this.nodes[i].snap(p); }
+      const e = V.sub(p, prev), el = V.len(e) || 1;
+      p = V.madd(prev, e, this.seg / el);
+      for (let k = 0; k < 3; k++) this.nodes[i].s[k].x = p[k];
+      out.push(p); prev = p;
+    }
+    this.pts = out;
+    return out;
+  }
+}
+
+/** Выпуклая оболочка точек {x,y} (монотонная цепь Эндрю), против часовой. */
+export function hull2(pts) {
+  const p = pts.slice().sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cr = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const lo = [], up = [];
+  for (const q of p) { while (lo.length >= 2 && cr(lo[lo.length - 2], lo[lo.length - 1], q) <= 0) lo.pop(); lo.push(q); }
+  for (let i = p.length - 1; i >= 0; i--) { const q = p[i]; while (up.length >= 2 && cr(up[up.length - 2], up[up.length - 1], q) <= 0) up.pop(); up.push(q); }
+  lo.pop(); up.pop();
+  return lo.concat(up);
 }
 
 /**

@@ -1,0 +1,68 @@
+{
+  "name": "volan",
+  "productName": "Volan",
+  "version": "1.0.0",
+  "description": "Волан — бадминтон против ИИ и с друзьями онлайн",
+  "main": "main.js",
+  "author": "Volan",
+  "license": "MIT",
+  "private": true,
+  "scripts": {
+    "stage": "node ../tools/stage-web.mjs app-web",
+    "start": "npm run stage && electron .",
+    "dist:win": "npm run stage && electron-builder --win portable --x64 --publish never",
+    "dist:linux": "npm run stage && electron-builder --linux AppImage --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.volan.badminton",
+    "productName": "Volan",
+    "copyright": "Волан",
+    "files": [
+      "main.js",
+      "app-web/**/*",
+      "package.json"
+    ],
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "compression": "maximum",
+    "win": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "Volan.${ext}"
+    },
+    "portable": {
+      "artifactName": "Volan.exe"
+    },
+    "linux": {
+      "icon": "build/icon.png",
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "artifactName": "Volan.${ext}"
+    },
+    "publish": null
+  },
+  "devDependencies": {
+    "electron": "38.8.6",
+    "electron-builder": "26.0.20"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Rahim004/badminton-.git"
+  }
+}

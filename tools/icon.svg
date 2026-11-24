@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#2e2683"/><stop offset="1" stop-color="#17134a"/>
+    </linearGradient>
+    <clipPath id="headclip"><ellipse cx="0" cy="0" rx="70" ry="92"/></clipPath>
+    <linearGradient id="skirt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffffff"/><stop offset="1" stop-color="#cfd6ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <!-- скоростные полосы в духе табло -->
+  <g stroke="#ffffff" stroke-opacity=".05" stroke-width="14">
+    <path d="M-40 120 L200 -40M-40 260 L330 -40M-40 400 L470 -40M60 560 L560 130M200 560 L560 300"/>
+  </g>
+  <g id="art">
+  <!-- след волана -->
+  <g stroke-linecap="round" fill="none">
+    <path d="M300 214 L214 300" stroke="#2fb8ff" stroke-width="0"/>
+    <path d="M376 250 L440 186" stroke="#2fb8ff" stroke-width="9" opacity=".85"/>
+    <path d="M396 286 L452 230" stroke="#ff3d6e" stroke-width="7" opacity=".8"/>
+    <path d="M336 118 L384 70" stroke="#2fb8ff" stroke-width="7" opacity=".7"/>
+  </g>
+  <!-- ракетка -->
+  <g transform="translate(228 276) rotate(40) scale(.88)">
+    <rect x="-9" y="86" width="18" height="52" fill="#ffd23f"/>
+    <path d="M-34 70 L-9 138 L9 138 L34 70 Z" fill="#ffd23f" opacity=".0"/>
+    <rect x="-13" y="132" width="26" height="104" rx="9" fill="#0d0a33"/>
+    <g stroke="#ffd23f" stroke-width="5" opacity=".9">
+      <path d="M-13 150 L13 160M-13 174 L13 184M-13 198 L13 208M-13 222 L13 232"/>
+    </g>
+    <rect x="-13" y="226" width="26" height="12" rx="6" fill="#ffd23f"/>
+    <ellipse cx="0" cy="0" rx="70" ry="92" fill="#ffffff" fill-opacity=".10"/>
+    <g clip-path="url(#headclip)" stroke="#ffffff" stroke-width="3.2" stroke-opacity=".75">
+      <path d="M-70 -64H70M-70 -42H70M-70 -20H70M-70 2H70M-70 24H70M-70 46H70M-70 68H70"/>
+      <path d="M-52 -92V92M-34 -92V92M-17 -92V92M0 -92V92M17 -92V92M34 -92V92M52 -92V92"/>
+    </g>
+    <ellipse cx="0" cy="0" rx="70" ry="92" fill="none" stroke="#ffd23f" stroke-width="15"/>
+    <ellipse cx="0" cy="0" rx="70" ry="92" fill="none" stroke="#fff3b0" stroke-width="3" transform="translate(-3 -3)" opacity=".7"/>
+  </g>
+  <!-- волан: пробка впереди, перья позади -->
+  <g transform="translate(372 150) rotate(45)">
+    <path d="M-21 18 L-58 128 Q0 152 58 128 L21 18 Z" fill="url(#skirt)" stroke="#17134a" stroke-width="5" stroke-linejoin="round"/>
+    <g stroke="#8d96e8" stroke-width="3.5" stroke-linecap="round">
+      <path d="M-11 22 L-30 138M0 22 V142M11 22 L30 138"/>
+    </g>
+    <path d="M-52 112 Q0 134 52 112" fill="none" stroke="#ff3d6e" stroke-width="9" stroke-linecap="round"/>
+    <path d="M-57 128 Q0 152 57 128" fill="none" stroke="#17134a" stroke-width="5" stroke-linecap="round" opacity="0"/>
+    <path d="M-24 22 A24 24 0 0 1 24 22 Z" fill="#ff3d6e" stroke="#17134a" stroke-width="5" stroke-linejoin="round" transform="translate(0 -4)"/>
+    <ellipse cx="-8" cy="3" rx="6" ry="3.5" fill="#fff" opacity=".7" transform="rotate(-20 -8 3)"/>
+  </g>
+  </g>
+</svg>

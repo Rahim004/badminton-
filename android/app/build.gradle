@@ -1,0 +1,58 @@
+plugins {
+    id 'com.android.application'
+}
+
+// Версия: -PversionName=1.2.3 (workflow берёт её из src/version.js); versionCode считается из неё.
+def vName = (project.findProperty('versionName') ?: '1.0.0').toString()
+def vParts = vName.tokenize('.').collect { (it.replaceAll('[^0-9]', '') ?: '0') as int }
+def vCode = vParts[0] * 10000 + (vParts.size() > 1 ? vParts[1] : 0) * 100 + (vParts.size() > 2 ? vParts[2] : 0)
+
+android {
+    namespace 'com.volan.badminton'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId "com.volan.badminton"
+        minSdk 24
+        targetSdk 34
+        versionCode vCode
+        versionName vName
+    }
+
+    buildFeatures { buildConfig true }
+
+    signingConfigs {
+        // Секреты репозитория (VOLAN_KEYSTORE и др.) → свой ключ; иначе — публичный ключ volan-public.jks,
+        // лежащий в репозитории: подпись одна и та же у всех релизов, поэтому APK обновляется поверх старого.
+        release {
+            def ks = System.getenv('VOLAN_KEYSTORE')
+            if (ks) {
+                storeFile file(ks)
+                storePassword System.getenv('VOLAN_KS_PASS')
+                keyAlias System.getenv('VOLAN_KEY_ALIAS')
+                keyPassword System.getenv('VOLAN_KEY_PASS')
+            } else {
+                storeFile file('../volan-public.jks')
+                storePassword 'volan-public'
+                keyAlias 'volan'
+                keyPassword 'volan-public'
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            signingConfig signingConfigs.release
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_17
+        targetCompatibility JavaVersion.VERSION_17
+    }
+}
+
+dependencies {
+    implementation 'androidx.webkit:webkit:1.11.0'
+}

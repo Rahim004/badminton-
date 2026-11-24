@@ -14,6 +14,80 @@ python3 -m http.server 8000
 # затем http://localhost:8000/
 ```
 
+## Скачать и установить
+
+В игре: **главное меню → «Скачать игру»** (или кнопка «Скачать» под названием). Там же кнопка
+«Установить» и инструкция именно для вашего устройства.
+
+| Устройство | Как |
+|---|---|
+| iPhone / iPad | Safari → «Поделиться» → «На экран “Домой”» |
+| Android | Chrome → меню ⋮ → «Установить приложение» — или файл **Volan.apk** (ниже) |
+| Windows / Mac / Linux | Chrome, Edge, Яндекс Браузер → значок установки в адресной строке → «Установить» — или **Volan.exe** / **Volan.AppImage** |
+
+Установленная из браузера игра (PWA) и все приложения хранят файлы на устройстве: матчи против ИИ работают
+без интернета, онлайн с друзьями — через сеть. Профиль и настройки лежат в localStorage устройства.
+
+Готовые файлы (GitHub Releases, всегда последняя версия):
+
+* Android: https://github.com/Rahim004/badminton-/releases/latest/download/Volan.apk
+* Windows (портативный, без установки): https://github.com/Rahim004/badminton-/releases/latest/download/Volan.exe
+* Linux: https://github.com/Rahim004/badminton-/releases/latest/download/Volan.AppImage
+
+**APK на Android:** откройте скачанный файл; если телефон просит — разрешите установку из неизвестных
+источников для браузера/«Файлов»; при предупреждении Play Защиты выберите «Всё равно установить».
+Новая версия ставится поверх старой, профиль сохраняется. **Volan.exe:** Windows SmartScreen может
+написать «Система Windows защитила ваш компьютер» (файл не подписан платным сертификатом) —
+«Подробнее» → «Выполнить в любом случае». Полный экран — F11.
+
+### Как это устроено
+
+* `manifest.webmanifest`, `icons/`, `sw.js` — установка из браузера и офлайн-кэш **всех** файлов игры
+  (включая `vendor/` и `fonts/`). Кэш версионный: имя = версия + хэш файлов.
+* `src/version.js` — **единственный** источник версии (`VERSION`) и имён файлов релиза; от него зависят
+  кэш `sw.js`, экран «Скачать игру», имя Release и проверка тега в CI.
+* `src/pwa.js` — регистрация service worker (тихо отключается в песочнице/iframe, на `file://`, внутри
+  приложений), `beforeinstallprompt`, определение платформы; `src/ui/download.js` — экран «Скачать игру».
+* `android/` — Android-приложение `com.volan.badminton`: WebView открывает файлы игры из assets по
+  `https://appassets.androidplatform.net/game/` (WebViewAssetLoader; нужен для ES-модулей и localStorage),
+  JS и DOM storage включены, звук после жеста, смешанный контент запрещён, полноэкранный режим, экран не гаснет,
+  «Назад» = пауза / шаг назад / двойное нажатие для выхода. В user agent добавляется `VolanApp/…`.
+* `desktop/` — Electron: окно с игрой по `volan://game/`, `electron-builder` собирает портативный `Volan.exe`
+  (Windows) и `Volan.AppImage` (Linux). F11 — полный экран.
+
+### Выпуск новой версии
+
+1. Поднять `VERSION` в `src/version.js` (и размеры файлов там же, если изменились).
+2. `node tools/gen-sw.mjs` — обновить список файлов и хэш в `sw.js` (иначе `node --test tests/*.test.mjs`
+   и CI упадут: офлайн-кэш устарел).
+3. Закоммитить, `git tag v<VERSION> && git push origin main v<VERSION>`.
+4. GitHub Actions (`.github/workflows/release.yml`) соберёт `Volan.apk`, `Volan.exe`, `Volan.AppImage`
+   и приложит их, вместе с `SHA256SUMS.txt`, к Release. Вручную: Actions → Release → Run workflow
+   (галочка `publish` — ещё и Release).
+
+**Подпись APK.** Без настроек APK подписывается публичным ключом `android/volan-public.jks` из репозитория
+(пароль `volan-public`): подпись одинакова у всех релизов, поэтому обновление «поверх» работает, но этот ключ
+не секретный. Чтобы подписывать своим ключом, создайте его и добавьте секреты репозитория
+(Settings → Secrets and variables → Actions):
+
+```bash
+keytool -genkeypair -alias volan -keyalg RSA -keysize 2048 -validity 36500 -keystore volan-release.jks
+base64 -w0 volan-release.jks    # → ANDROID_KEYSTORE_BASE64
+# ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS (volan), ANDROID_KEY_PASSWORD
+```
+
+Внимание: APK с другой подписью нельзя поставить поверх старого — придётся удалить прежнюю версию
+(профиль лежит в приложении; перенесите его заранее кодом переноса профиля из раздела «Профиль»).
+
+**Локальная сборка** (нужны JDK 17, Android SDK 34, Gradle 8.9+, Node 22):
+
+```bash
+node tools/stage-web.mjs android/app/src/main/assets
+(cd android && gradle assembleRelease -PversionName=1.0.0)       # android/app/build/outputs/apk/release/
+(cd desktop && npm ci && npm run dist:linux)                      # desktop/dist/Volan.AppImage (Windows .exe — на Windows или в CI)
+python3 tools/render-icons.py                                     # перерисовать иконки из tools/icon.svg
+```
+
 ## Как играть
 
 Розыгрыш идёт до падения волана. Очко получает тот, на чьей стороне волан
@@ -89,6 +163,8 @@ node --test tests/net.test.mjs       # онлайн: формат, часы, и�
 python3 tests/net_browser.py        # онлайн в двух вкладках (BroadcastChannel, пинг 0/200/300 мс, 2×2, реванш)
 python3 tests/net_ui_browser.py     # онлайн с настоящим лобби: ссылка #room-, «Готов», «Начать», реакции, выход хоста
 python3 tests/net_real_mq.py        # настоящие MQTT-брокеры (нужен интернет; без него — SKIP)
+node --test tests/pwa.test.mjs      # упаковка: кэш sw.js актуален, манифест, версия, имена файлов релиза, платформа
+python3 tests/download_browser.py   # PWA: манифест, SW, офлайн-запуск, экран «Скачать игру», sandbox-iframe (скриншоты — tests/screens/download/)
 ```
 
 `tests/browser.py` кладёт скриншоты в `tests/screens/`.

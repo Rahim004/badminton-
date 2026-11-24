@@ -33,6 +33,7 @@ import { bcHub, bcLink, mqHub, mqLink, peerHub, peerLink, createRtc, rid, MQ_BRO
 import { createHostDriver } from './host.js';
 import { createGuestView } from './guest.js';
 import { CHARACTER_ORDER, CHARACTERS, MATCH_FORMATS, DIFFICULTY } from '../config.js';
+import { SITE_URL } from '../version.js';
 
 export const NET_TEXT = {
   noweb: 'Онлайн-игра работает в версии на GitHub',
@@ -56,13 +57,13 @@ export const NET_TEXT = {
 const MAX_HUMANS = { singles: 2, doubles: 4 };
 
 export function roomFromHash() { try { const m = /^#room-([A-Za-z]{5})$/.exec(location.hash); return m ? m[1].toUpperCase() : null; } catch (_) { return null; } }
-export function roomLink(code) { try { return location.href.split('#')[0] + '#room-' + code; } catch (_) { return '#room-' + code; } }
+export function roomLink(code) { try { if (/VolanApp/.test(navigator.userAgent)) return SITE_URL + '#room-' + code; return location.href.split('#')[0] + '#room-' + code; } catch (_) { return '#room-' + code; } }
 
 /** Сеть вообще возможна? (файл/встроенный просмотрщик/песочница — нет). */
 export function netAvailable() {
   try {
     if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return false;
-    if (!/^https?:$/.test(location.protocol)) return false;
+    if (!/^https?:$/.test(location.protocol) && !/VolanApp/.test(navigator.userAgent)) return false;   // exe-приложение открывает игру по volan://
     if (window.top !== window) return false;       // встроенный просмотрщик (iframe-песочница)
     if (navigator && navigator.onLine === false) return false;
     return true;

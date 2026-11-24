@@ -25,6 +25,7 @@ import { loadControls, onControlsChange } from './controlsSettings.js';
 import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createNet } from './net/index.js';
+import './pwa.js';   // service worker + установка (регистрируется сам, без ошибок в песочнице)
 
 const canvas = document.getElementById('game');
 const uiRoot = document.getElementById('ui');
@@ -173,6 +174,7 @@ game.on('netStart', () => {
 });
 game.on('netEnd', () => { running = false; paused = false; game.paused = false; game.phase = 'idle'; ui.showMenu(); });
 window.__net = net;
+window.__volan = { back: () => ui.handleBack() };   // кнопка «Назад» в Android-оболочке
 try { if (/netdebug/.test(location.hash + location.search)) import('./net/debug.js').then(m => m.mountNetDebug(net, game)); } catch (_) { /* нет location */ }
 
 // ------------------------------------------------------------ тест-хуки

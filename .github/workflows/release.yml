@@ -1,0 +1,187 @@
+# Сборка приложений «Волан» и публикация GitHub Release.
+#   * push тега v*  (например: git tag v1.0.1 && git push origin v1.0.1) — собрать всё и выложить Release;
+#   * Run workflow (workflow_dispatch) — собрать всё и положить файлы в artifacts; галочка «publish» — ещё и Release.
+# Файлы Release (имена менять нельзя — на них ссылается экран «Скачать игру», src/version.js):
+#   Volan.apk (Android), Volan.exe (Windows, портативный), Volan.AppImage (Linux), SHA256SUMS.txt
+# Подпись APK: секреты репозитория ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+#   ANDROID_KEY_PASSWORD — тогда APK подписан вашим ключом; без секретов — публичным ключом android/volan-public.jks
+#   (одинаковым у всех релизов, поэтому APK обновляется поверх старого). Подробности — README, «Скачать и установить».
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Опубликовать GitHub Release (тег v<версия из src/version.js>)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Версия из src/version.js
+        id: v
+        run: |
+          VERSION=$(node -e "const m=require('fs').readFileSync('src/version.js','utf8').match(/VERSION\s*=\s*'([^']+)'/); if(!m) process.exit(1); console.log(m[1])")
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "Версия в src/version.js: $VERSION"
+          if [[ "$GITHUB_REF" == refs/tags/v* && "$GITHUB_REF_NAME" != "v$VERSION" ]]; then
+            echo "::error::Тег $GITHUB_REF_NAME не совпадает с версией в src/version.js (v$VERSION). Поправьте VERSION или тег."
+            exit 1
+          fi
+      - name: Офлайн-кэш актуален
+        run: node tools/gen-sw.mjs --check
+      - name: Тесты (node)
+        run: node --test tests/*.test.mjs
+
+  android:
+    needs: check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - name: Файлы игры в assets приложения
+        run: node tools/stage-web.mjs android/app/src/main/assets
+      - name: Ключ подписи (если заданы секреты)
+        env:
+          KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          KEY_PASS: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          if [ -n "$KS_B64" ] && [ -n "$KS_PASS" ] && [ -n "$KEY_ALIAS" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/volan-release.jks"
+            {
+              echo "VOLAN_KEYSTORE=$RUNNER_TEMP/volan-release.jks"
+              echo "VOLAN_KS_PASS=$KS_PASS"
+              echo "VOLAN_KEY_ALIAS=$KEY_ALIAS"
+              echo "VOLAN_KEY_PASS=${KEY_PASS:-$KS_PASS}"
+            } >> "$GITHUB_ENV"
+            echo "APK будет подписан ключом из секретов репозитория"
+          else
+            echo "Секреты подписи не заданы — APK подписывается публичным ключом android/volan-public.jks"
+          fi
+      - name: Сборка release APK
+        working-directory: android
+        run: gradle --no-daemon assembleRelease -PversionName=${{ needs.check.outputs.version }}
+      - name: Проверка подписи и имя файла
+        run: |
+          mkdir -p dist
+          cp android/app/build/outputs/apk/release/app-release.apk dist/Volan.apk
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/apksigner" verify --print-certs dist/Volan.apk | head -3
+          ls -l dist/Volan.apk
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volan-apk
+          path: dist/Volan.apk
+          if-no-files-found: error
+
+  windows:
+    needs: check
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+        working-directory: desktop
+    env:
+      CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm pkg set version=${{ needs.check.outputs.version }}
+      - name: Портативный Volan.exe (Electron + electron-builder)
+        run: npm run dist:win
+      - run: ls -l dist/Volan.exe
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volan-exe
+          path: desktop/dist/Volan.exe
+          if-no-files-found: error
+
+  linux:
+    needs: check
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm pkg set version=${{ needs.check.outputs.version }}
+      - name: Volan.AppImage
+        run: npm run dist:linux
+      - run: ls -l dist/Volan.AppImage
+      - uses: actions/upload-artifact@v4
+        with:
+          name: volan-appimage
+          path: desktop/dist/Volan.AppImage
+          if-no-files-found: error
+
+  release:
+    needs: [check, android, windows, linux]
+    if: startsWith(github.ref, 'refs/tags/v') || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Контрольные суммы
+        working-directory: dist
+        run: |
+          ls -l
+          sha256sum Volan.apk Volan.exe Volan.AppImage | tee SHA256SUMS.txt
+      - name: Выложить Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/v') && github.ref_name || format('v{0}', needs.check.outputs.version) }}
+          name: Волан ${{ needs.check.outputs.version }}
+          body: |
+            **Волан ${{ needs.check.outputs.version }}** — бадминтон против ИИ и с друзьями онлайн.
+
+            - **Android:** `Volan.apk` — скачайте и откройте (разрешите установку из неизвестных источников).
+            - **Windows:** `Volan.exe` — портативная версия, установка не нужна.
+            - **Linux:** `Volan.AppImage` — `chmod +x Volan.AppImage && ./Volan.AppImage`.
+            - **Без скачивания:** https://rahim004.github.io/badminton-/ — можно «Установить» из браузера.
+          files: |
+            dist/Volan.apk
+            dist/Volan.exe
+            dist/Volan.AppImage
+            dist/SHA256SUMS.txt
+          fail_on_unmatched_files: true

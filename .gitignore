@@ -4,3 +4,13 @@ __pycache__/
 .DS_Store
 tests/screens/
 play.html
+# сборка приложений
+android/app/src/main/assets/
+android/app/build/
+android/build/
+android/.gradle/
+android/local.properties
+desktop/node_modules/
+desktop/dist/
+desktop/app-web/
+dist/

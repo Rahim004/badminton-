@@ -21,6 +21,7 @@ import { portrait } from './portrait.js';
 import { heroById } from './heroes.js';
 import { topBar, codePlate, plural } from './profileScreens.js';
 import * as P from '../profile/index.js';
+import { SITE_URL } from '../version.js';
 import { DIFFICULTY, DIFFICULTY_ORDER, MATCH_FORMATS, CHARACTER_ORDER } from '../config.js';
 
 export const EMOTES = [
@@ -159,8 +160,8 @@ export function createOnline(ctx) {
   }
 
   // ------------------------------------------------------------ места и игроки
-  function roomLink(code) {
-    try { return `${location.origin}${location.pathname}#room-${code}`; } catch (_) { return `#room-${code}`; }
+  function roomLink(code) {   // в приложении (APK/exe) адрес локальный — зовём друзей на сайт
+    try { if (/VolanApp/.test(navigator.userAgent)) return `${SITE_URL}#room-${code}`; return `${location.origin}${location.pathname}#room-${code}`; } catch (_) { return `#room-${code}`; }
   }
   function mySlot() {
     if (!S.lobby) return null;

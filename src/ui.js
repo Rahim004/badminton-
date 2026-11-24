@@ -18,7 +18,7 @@
  *
  * id для тестов: #menu #start #aiSetup #aiGo #playFriends #toProfile #toSettings #pause #resume
  *   #over #again #pauseBtn #profileEdit #profile #friends #transfer #settings #online #lobby
- *   #onlineOver #onlineHud #emoteBtn #dropOverlay
+ *   #onlineOver #onlineHud #emoteBtn #dropOverlay #toDownload #dlChip #download #installBtn #dlApk #dlExe
  */
 import { DIFFICULTY, DIFFICULTY_ORDER, MATCH_FORMATS, CHARACTER_ORDER } from './config.js';
 import { buildControlsSection, loadControls } from './controlsSettings.js';
@@ -29,6 +29,8 @@ import { heroById } from './ui/heroes.js';
 import { portrait } from './ui/portrait.js';
 import { buildProfileScreens, topBar, plural } from './ui/profileScreens.js';
 import { createOnline, parseRoomHash } from './ui/online.js';
+import { buildDownloadScreen, downloadAvailable } from './ui/download.js';
+import { pwa } from './pwa.js';
 
 const MODE_LABEL = { singles: '1 × 1', doubles: '2 × 2' };
 
@@ -56,12 +58,14 @@ export function createUI(root, handlers = {}) {
   // ------------------------------------------------------------ главное меню
   const meChip = h('button', { class: 'me-chip', id: 'meChip', type: 'button', onclick: () => nav.go(P.hasProfile() ? 'profile' : 'profileEdit') });
   const aiSub = h('span', { class: 'bar-sub', id: 'aiSummary' });
+  const dlBar = h('button', { class: 'bar small dl-menu', id: 'toDownload', type: 'button', onclick: () => nav.go('download') }, icon('download'), h('span', { class: 'bar-label' }, 'Скачать игру'));
+  const dlChip = h('button', { class: 'dl-chip', id: 'dlChip', type: 'button', onclick: () => nav.go('download') }, icon('download'), 'Скачать');
   const menu = h('div', { class: 'screen menu', id: 'menu' },
     h('div', { class: 'menu-wrap' },
       h('div', { class: 'brand' },
         meChip,
         h('h1', { class: 'logo' }, h('span', { class: 'logo-word' }, 'Волан'), h('span', { class: 'logo-mark' }, icon('shuttle'))),
-        h('p', { class: 'tag' }, 'Бадминтон: против ИИ и с друзьями по ссылке')),
+        h('p', { class: 'tag' }, 'Бадминтон: против ИИ и с друзьями по ссылке'), dlChip),
       h('nav', { class: 'menu-actions', 'aria-label': 'Главное меню' },
         h('div', { class: 'ai-group' },
           h('button', { class: 'bar go hero-bar', id: 'start', type: 'button', onclick: startAI },
@@ -71,7 +75,8 @@ export function createUI(root, handlers = {}) {
           h('span', { class: 'bar-label' }, 'Играть с друзьями'), h('span', { class: 'bar-sub' }, 'онлайн, 1 × 1 и 2 × 2')),
         h('div', { class: 'row2' },
           h('button', { class: 'bar', id: 'toProfile', type: 'button', onclick: () => nav.go(P.hasProfile() ? 'profile' : 'profileEdit') }, h('span', { class: 'bar-label' }, 'Профиль')),
-          h('button', { class: 'bar', id: 'toSettings', type: 'button', onclick: () => nav.go('settings') }, h('span', { class: 'bar-label' }, 'Настройки'))))));
+          h('button', { class: 'bar', id: 'toSettings', type: 'button', onclick: () => nav.go('settings') }, h('span', { class: 'bar-label' }, 'Настройки'))),
+        dlBar)));
 
   function paintMenu() {
     const p = P.getProfile();
@@ -84,6 +89,8 @@ export function createUI(root, handlers = {}) {
       meChip.style.removeProperty('--kit');
       meChip.append(h('span', { class: 'chip-bust empty' }, icon('plus')), h('span', { class: 'chip-text' }, h('b', {}, 'Создать профиль'), h('small', {}, 'ник, герой, код друга')));
     }
+    const canDl = downloadAvailable();   // в установленном приложении кнопки не нужны
+    dlBar.classList.toggle('hidden', !canDl); dlChip.classList.toggle('hidden', !canDl);
     aiSub.textContent = `${MODE_LABEL[settings.mode]}, ${DIFFICULTY[settings.difficulty].label.toLowerCase()}, ${MATCH_FORMATS[settings.format].label.replace('1 гейм ', '')}`;
   }
 
@@ -168,6 +175,7 @@ export function createUI(root, handlers = {}) {
 
   // ------------------------------------------------------------ профиль и онлайн
   const prof = buildProfileScreens(nav);
+  const download = buildDownloadScreen(nav);
   const online = createOnline({
     nav, handlers,
     getGame: () => game,
@@ -179,7 +187,7 @@ export function createUI(root, handlers = {}) {
     h('i'), h('i'));
   const hint = h('div', { class: 'hint hidden', id: 'hint' }, '');
   root.append(menu, aiSetup, settingsScreen, pause, over,
-    prof.edit.el, prof.view.el, prof.friends.el, prof.transfer.el,
+    prof.edit.el, prof.view.el, prof.friends.el, prof.transfer.el, download.el,
     online.screens.home.el, online.screens.lobby.el, online.screens.over.el,
     ...online.layers, pauseBtn, hint);
 
@@ -189,7 +197,7 @@ export function createUI(root, handlers = {}) {
     settings: { el: settingsScreen, open: paintSettings },
     pause: { el: pause, open: () => { controlsSection.refresh(); pauseNote.classList.toggle('hidden', !online.inMatch); } },
     over: { el: over, open() {} },
-    profileEdit: prof.edit, profile: prof.view, friends: prof.friends, transfer: prof.transfer,
+    profileEdit: prof.edit, profile: prof.view, friends: prof.friends, transfer: prof.transfer, download,
     online: online.screens.home, lobby: online.screens.lobby, onlineOver: online.screens.over,
   });
 
@@ -235,6 +243,16 @@ export function createUI(root, handlers = {}) {
       ui.setHint(null);
     },
     hideAll() { show(null); },
+    /** Кнопка «Назад» оболочки (Android): true — экран обработал, false — мы в главном меню. */
+    handleBack() {
+      if (current === null) { handlers.onPause?.(); return true; }
+      if (current === 'pause') { handlers.onResume?.(); return true; }
+      if (current === 'menu') return false;
+      const el = screens[current] && screens[current].el;
+      const b = el && el.querySelector('.icon-btn.back, #overMenu');
+      if (b) { b.click(); return true; }
+      nav.back(); return true;
+    },
     setHint(text) {
       hint.textContent = text || '';
       hint.classList.toggle('hidden', !text);
@@ -271,6 +289,7 @@ export function createUI(root, handlers = {}) {
   let lastRecord = null;
   globalThis.addEventListener && globalThis.addEventListener('hashchange', () => { if (game && parseRoomHash() && !online.inMatch) online.handleHash(); });
   P.onProfileChange(() => { if (current === 'menu') paintMenu(); });
+  pwa.onChange(() => { if (current === 'menu') paintMenu(); });
   paintMenu();
   return ui;
 }

@@ -7,6 +7,8 @@
 export const VERSION = '1.0.0';
 export const REPO = 'Rahim004/badminton-';
 export const SITE_URL = 'https://rahim004.github.io/badminton-/';
+/** Политика конфиденциальности (нужна Google Play); файл privacy.html лежит в корне сайта. */
+export const PRIVACY_URL = SITE_URL + 'privacy.html';
 export const RELEASE_LATEST = `https://github.com/${REPO}/releases/latest/download/`;
 export const RELEASES_PAGE = `https://github.com/${REPO}/releases/latest`;
 /** Файлы релиза: имена должны совпадать с теми, что кладёт workflow в GitHub Release. */

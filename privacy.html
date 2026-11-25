@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#17134a">
+<title>Волан — политика конфиденциальности / Privacy Policy</title>
+<meta name="description" content="Политика конфиденциальности игры «Волан» (бадминтон): какие данные хранятся на устройстве и что передаётся другим игрокам в онлайн-матче. Privacy policy of the badminton game Volan.">
+<link rel="icon" type="image/png" sizes="192x192" href="./icons/icon-192.png">
+<style>
+  :root { --bg:#17134a; --card:#221c66; --ink:#f3f1ff; --dim:#b9b4ee; --acc:#ffd23f; --sky:#2fb8ff; --line:#3a3290; }
+  @media (prefers-color-scheme: light) {
+    :root { --bg:#f4f3ff; --card:#ffffff; --ink:#1a1650; --dim:#4b467f; --acc:#a86a00; --sky:#0b6fb0; --line:#d6d3f2; }
+  }
+  * { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.6 system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif; }
+  main { max-width: 820px; margin: 0 auto; padding: 24px 16px 64px; }
+  header { display:flex; align-items:center; gap:14px; margin-bottom: 8px; }
+  header img { width:56px; height:56px; border-radius:12px; }
+  h1 { font-size: 1.6rem; line-height:1.2; margin:0; }
+  h2 { font-size: 1.2rem; margin: 28px 0 8px; color: var(--acc); }
+  p, li { color: var(--ink); }
+  .dim { color: var(--dim); font-size: .92rem; }
+  nav.lang { display:flex; gap:8px; margin: 14px 0 6px; }
+  nav.lang a { padding: 6px 14px; border:1px solid var(--line); border-radius: 999px; color: var(--ink); text-decoration:none; background: var(--card); }
+  nav.lang a:hover { border-color: var(--sky); }
+  section.doc { background: var(--card); border:1px solid var(--line); border-radius: 16px; padding: 8px 20px 22px; margin-top: 18px; }
+  a { color: var(--sky); }
+  table { width:100%; border-collapse: collapse; margin: 8px 0; font-size: .95rem; }
+  th, td { text-align:left; vertical-align:top; padding: 8px 10px; border-bottom:1px solid var(--line); }
+  th { color: var(--dim); font-weight: 600; }
+  code { background: rgba(127,127,200,.18); padding: 1px 6px; border-radius: 6px; font-size: .9em; word-break: break-all; }
+  ul { padding-left: 1.2em; }
+  .table-wrap { overflow-x:auto; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <img src="./icons/icon-192.png" alt="" width="56" height="56">
+    <div>
+      <h1>Волан — политика конфиденциальности<br><span class="dim">Volan — Privacy Policy</span></h1>
+    </div>
+  </header>
+  <p class="dim">Обновлено / Last updated: 25.11.2026 · Версия приложения / App version: 1.0 и новее / and later</p>
+  <nav class="lang"><a href="#ru">Русский</a><a href="#en">English</a></nav>
+
+  <!-- ===================================================== РУССКИЙ -->
+  <section class="doc" id="ru" lang="ru">
+    <h2>1. Кратко</h2>
+    <ul>
+      <li>У «Волана» <b>нет серверов и аккаунтов</b>: регистрации, e-mail и пароля нет. Разработчик не получает и не хранит ваши данные.</li>
+      <li>Профиль, друзья, статистика и настройки лежат <b>только на вашем устройстве</b> (локальное хранилище браузера / приложения).</li>
+      <li>В онлайн-матче с друзьями ваш ник, герой, цвет формы, случайный код игрока и ваши игровые действия получают <b>другие участники этой комнаты</b> через публичные MQTT-серверы и прямое соединение WebRTC.</li>
+      <li><b>Нет рекламы, нет аналитики, нет рекламных идентификаторов, данные не продаются</b> и не передаются в маркетинговых целях.</li>
+      <li>Игра не просит доступ к камере, микрофону, геолокации, контактам, фото и файлам.</li>
+    </ul>
+
+    <h2>2. Кто мы</h2>
+    <p>Игру «Волан» (приложение <code>com.volan.badminton</code>, сайт <a href="https://rahim004.github.io/badminton-/">rahim004.github.io/badminton-/</a>) выпускает независимый разработчик (GitHub: <a href="https://github.com/Rahim004">Rahim004</a>). Связь: <a href="https://github.com/Rahim004/badminton-/issues">https://github.com/Rahim004/badminton-/issues</a> (создайте обращение; не указывайте в нём личные данные).</p>
+
+    <h2>3. Что хранится на вашем устройстве</h2>
+    <div class="table-wrap"><table>
+      <tr><th>Данные</th><th>Зачем</th><th>Где</th></tr>
+      <tr><td>Профиль: ник (до 16 символов, придумываете сами), выбранный герой, цвет формы, случайный идентификатор игрока и производный от него код друга из 6 символов, дата создания, статистика (матчи, победы, самый длинный розыгрыш, смэши, онлайн-матчи)</td><td>Показывать вас в игре и другим игрокам, вести личную статистику</td><td>Локальное хранилище (<code>volan.profile</code>)</td></tr>
+      <tr><td>Список друзей: код, ник, герой и цвет друга, число ваших матчей с ним</td><td>Быстро находить знакомых в онлайн-игре</td><td><code>volan.friends</code></td></tr>
+      <tr><td>Настройки: звук, громкость, эффекты, схема управления, последние выбранные параметры матча</td><td>Запоминать ваш выбор</td><td><code>volan.settings</code></td></tr>
+      <tr><td>Файлы игры для работы без интернета (кэш)</td><td>Офлайн-режим против ИИ</td><td>Кэш браузера / установленное приложение</td></tr>
+    </table></div>
+    <p>Эти данные не отправляются разработчику. Удалить их можно в любой момент: удалить друзей — в игре (экран «Друзья»); всё остальное — очистить данные сайта в браузере, «Хранилище → Очистить данные» в настройках приложения Android или удалить приложение. Профиль можно перенести на другое устройство кодом из раздела «Профиль» — код создаётся и показывается только вам.</p>
+
+    <h2>4. Онлайн-игра: что получают другие игроки и сервисы</h2>
+    <p>Онлайн-режим включается только когда вы сами создаёте комнату или входите в неё по коду / ссылке. Игра против ИИ работает полностью без сети и ничего не передаёт.</p>
+    <p><b>Другим игрокам вашей комнаты</b> передаются: ник, герой, цвет формы, случайный идентификатор игрока и код друга (всё это вы указали в профиле или оно сгенерировано игрой), а также ваши игровые действия (управление, удары), быстрые реакции из готового набора (текстовых сообщений в игре нет). Игроки видят это, потому что иначе игра невозможна.</p>
+    <p><b>Публичные MQTT-брокеры</b> (ретрансляторы сообщений комнаты, соединение по защищённому WebSocket <code>wss://</code>). Игра подключается ко всем доступным одновременно:</p>
+    <ul>
+      <li><code>broker.emqx.io</code> (EMQX)</li>
+      <li><code>public.cloud.shiftr.io</code> (shiftr.io)</li>
+      <li><code>broker.hivemq.com</code> (HiveMQ)</li>
+      <li><code>test.mosquitto.org</code> (Eclipse Mosquitto)</li>
+      <li><code>mqtt.eclipseprojects.io</code> (Eclipse Foundation)</li>
+    </ul>
+    <p>Это общедоступные тестовые серверы третьих лиц, не принадлежащие разработчику. Они видят ваш IP-адрес и служебные данные соединения и ретранслируют сообщения комнаты (ник, герой, код игрока, игровые действия) в разделе <code>volan1/&lt;код комнаты&gt;/…</code>. Сообщения публикуются без флага «сохранить», но брокеры публичные и не требуют авторизации: <b>кто знает или подсмотрит код комнаты (или подпишется на общий раздел), может прочитать эти сообщения</b>. Поэтому не используйте в нике личные данные (настоящее имя, телефон, почту). У каждого брокера своя политика конфиденциальности и журналирования, мы ими не управляем.</p>
+    <p><b>Прямое соединение WebRTC</b> (игрок ↔ игрок) используется для быстрой передачи игровых данных. Для его установки используются STUN-серверы <code>stun.l.google.com</code>, <code>stun1.l.google.com</code> (Google), <code>stun.cloudflare.com</code> (Cloudflare), <code>global.stun.twilio.com</code> (Twilio): они узнают ваш публичный IP-адрес. Кроме того, <b>при прямом соединении другой игрок технически может увидеть ваш IP-адрес</b> — это свойство WebRTC. Если это нежелательно, играйте только с людьми, которым доверяете, или не используйте онлайн-режим / включите VPN.</p>
+    <p><b>Запасной путь PeerJS</b> (если брокеры недоступны): сигнальный сервер <code>0.peerjs.com</code> и ретрансляторы <code>eu-0.turn.peerjs.com</code>, <code>us-0.turn.peerjs.com</code> (проект PeerJS). Они видят IP-адрес и идентификатор комнаты и, при ретрансляции, передаваемые игровые данные.</p>
+    <p>Библиотеки онлайн-режима (MQTT.js, PeerJS) лежат внутри игры и загружаются с нашего же сайта/из приложения, а не с чужих серверов.</p>
+
+    <h2>5. Сайт на GitHub Pages</h2>
+    <p>Веб-версия игры размещена на GitHub Pages (GitHub, Inc.). При открытии сайта GitHub, как любой веб-хостинг, получает технические данные запроса (IP-адрес, браузер) и обрабатывает их по своей <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">политике конфиденциальности</a>. Мы не имеем доступа к этим журналам. Установка приложения из Google Play или APK с GitHub не отправляет разработчику никаких данных.</p>
+
+    <h2>6. Чего мы не делаем</h2>
+    <ul>
+      <li>Не показываем рекламу и не используем рекламные SDK и рекламный идентификатор.</li>
+      <li>Не используем аналитику, отчёты о сбоях и трекеры; не ставим cookie.</li>
+      <li>Не продаём и не передаём данные для рекламы или профилирования.</li>
+      <li>Не запрашиваем разрешения Android, кроме доступа к сети (<code>INTERNET</code>, <code>ACCESS_NETWORK_STATE</code>) и вибрации (<code>VIBRATE</code>).</li>
+      <li>Не открываем сторонние сайты внутри игры: ссылки (например, на GitHub) открываются во внешнем браузере.</li>
+    </ul>
+
+    <h2>7. Дети</h2>
+    <p>Игра не предназначена специально для детей младше 13 лет (и не собирает у кого-либо данные на своих серверах). Онлайн-режим не содержит чатов с произвольным текстом, но ник виден другим игрокам комнаты; родителям стоит помочь ребёнку выбрать ник без личных данных или не включать онлайн-режим.</p>
+
+    <h2>8. Ваши права</h2>
+    <p>Поскольку мы не храним ваши данные на своих серверах, управлять ими вы можете сами (см. раздел 3). Если вы считаете, что чьи-то данные из «Волана» попали туда, где им быть не стоит, напишите нам через GitHub Issues — мы поможем в пределах возможного. Права на доступ, исправление и удаление данных по законодательству вашей страны (например, GDPR) касаются третьих лиц-операторов брокеров и хостинга — обращаться нужно к ним.</p>
+
+    <h2>9. Изменения политики</h2>
+    <p>При изменении работы игры (например, новые серверы или новые данные) эта страница обновляется, дата вверху меняется. Актуальная версия всегда по адресу <a href="https://rahim004.github.io/badminton-/privacy.html">https://rahim004.github.io/badminton-/privacy.html</a>.</p>
+  </section>
+
+  <!-- ===================================================== ENGLISH -->
+  <section class="doc" id="en" lang="en">
+    <h2>1. Summary</h2>
+    <ul>
+      <li>Volan has <b>no servers and no accounts</b>: no sign-up, e-mail or password. The developer does not receive or store your data.</li>
+      <li>Your profile, friends, stats and settings are kept <b>only on your device</b> (local storage of the browser / app).</li>
+      <li>In an online match with friends, your nickname, hero, kit colour, random player ID and your in-game actions are received by <b>the other players in that room</b> through public MQTT brokers and a direct WebRTC connection.</li>
+      <li><b>No ads, no analytics, no advertising ID, no sale of data</b>, no marketing use of data.</li>
+      <li>The game never asks for camera, microphone, location, contacts, photos or files.</li>
+    </ul>
+
+    <h2>2. Who we are</h2>
+    <p>Volan (Android app <code>com.volan.badminton</code>, website <a href="https://rahim004.github.io/badminton-/">rahim004.github.io/badminton-/</a>) is published by an independent developer (GitHub: <a href="https://github.com/Rahim004">Rahim004</a>). Contact: <a href="https://github.com/Rahim004/badminton-/issues">https://github.com/Rahim004/badminton-/issues</a> (open an issue; please do not post personal data in it).</p>
+
+    <h2>3. What is stored on your device</h2>
+    <div class="table-wrap"><table>
+      <tr><th>Data</th><th>Purpose</th><th>Where</th></tr>
+      <tr><td>Profile: nickname (up to 16 characters, chosen by you), selected hero, kit colour, a random player ID and a 6-character friend code derived from it, creation date, stats (matches, wins, longest rally, smashes, online matches)</td><td>Show you in the game and to other players; keep personal stats</td><td>Local storage (<code>volan.profile</code>)</td></tr>
+      <tr><td>Friends list: code, nickname, hero and colour of the friend, number of your matches with them</td><td>Find people quickly in online play</td><td><code>volan.friends</code></td></tr>
+      <tr><td>Settings: sound, volume, effects, control scheme, last match options</td><td>Remember your choices</td><td><code>volan.settings</code></td></tr>
+      <tr><td>Game files for offline play (cache)</td><td>Offline play against the AI</td><td>Browser cache / installed app</td></tr>
+    </table></div>
+    <p>None of this is sent to the developer. You can delete it any time: remove friends inside the game (Friends screen); everything else by clearing site data in your browser, via Android Settings → Apps → Volan → Storage → Clear data, or by uninstalling the app. A profile can be moved to another device with a transfer code from the Profile section — the code is generated and shown only to you.</p>
+
+    <h2>4. Online play: what other players and services receive</h2>
+    <p>Online mode starts only when you create a room or join one by code / link. Playing against the AI works fully offline and sends nothing.</p>
+    <p><b>Other players in your room</b> receive: nickname, hero, kit colour, random player ID and friend code (all set by you in the profile or generated by the game), your in-game actions (controls, shots) and quick reactions from a fixed set (there is no free-text chat). They need this for the match to work.</p>
+    <p><b>Public MQTT brokers</b> (relay of room messages over secure WebSocket <code>wss://</code>). The game connects to all that are reachable at the same time:</p>
+    <ul>
+      <li><code>broker.emqx.io</code> (EMQX)</li>
+      <li><code>public.cloud.shiftr.io</code> (shiftr.io)</li>
+      <li><code>broker.hivemq.com</code> (HiveMQ)</li>
+      <li><code>test.mosquitto.org</code> (Eclipse Mosquitto)</li>
+      <li><code>mqtt.eclipseprojects.io</code> (Eclipse Foundation)</li>
+    </ul>
+    <p>These are open third-party test servers not owned by the developer. They see your IP address and connection metadata and relay room messages (nickname, hero, player ID, game actions) under the topic <code>volan1/&lt;room code&gt;/…</code>. Messages are published without the “retain” flag, but the brokers are public and unauthenticated: <b>anyone who knows or observes a room code (or subscribes to the shared topic) can read those messages</b>. Do not put personal data (real name, phone, e-mail) into your nickname. Each broker has its own privacy and logging policy that we do not control.</p>
+    <p><b>Direct WebRTC connection</b> (player ↔ player) carries the fast game data. To set it up the game contacts STUN servers <code>stun.l.google.com</code>, <code>stun1.l.google.com</code> (Google), <code>stun.cloudflare.com</code> (Cloudflare) and <code>global.stun.twilio.com</code> (Twilio), which learn your public IP address. Also, <b>with a direct connection the other player can technically see your IP address</b> — this is how WebRTC works. If that is a concern, play only with people you trust, skip online mode or use a VPN.</p>
+    <p><b>Fallback via PeerJS</b> (if the brokers are unreachable): the signalling server <code>0.peerjs.com</code> and relay servers <code>eu-0.turn.peerjs.com</code>, <code>us-0.turn.peerjs.com</code> (PeerJS project). They see your IP address and the room ID and, when relaying, the game data.</p>
+    <p>The online libraries (MQTT.js, PeerJS) are bundled with the game and loaded from our own site/app, not from third-party servers.</p>
+
+    <h2>5. Website on GitHub Pages</h2>
+    <p>The web version is hosted on GitHub Pages (GitHub, Inc.). When you open the site, GitHub, like any web host, receives technical request data (IP address, browser) and processes it under its <a href="https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement">privacy statement</a>. We have no access to those logs. Installing the app from Google Play or the APK from GitHub sends nothing to the developer.</p>
+
+    <h2>6. What we do not do</h2>
+    <ul>
+      <li>No ads, no advertising SDKs, no advertising ID.</li>
+      <li>No analytics, crash reporters or trackers; no cookies.</li>
+      <li>We do not sell or share data for advertising or profiling.</li>
+      <li>The Android app requests only network access (<code>INTERNET</code>, <code>ACCESS_NETWORK_STATE</code>) and vibration (<code>VIBRATE</code>).</li>
+      <li>Links (for example to GitHub) open in your external browser, not inside the game.</li>
+    </ul>
+
+    <h2>7. Children</h2>
+    <p>The game is not specifically directed at children under 13, and it does not collect anybody's data on its own servers. Online mode has no free-text chat, but your nickname is visible to the other players in the room; parents may want to help a child choose a nickname without personal details, or leave online mode off.</p>
+
+    <h2>8. Your rights</h2>
+    <p>Because we do not keep your data on our servers, you control it yourself (see section 3). If you believe someone's data from Volan ended up somewhere it should not be, tell us through GitHub Issues and we will help as far as we can. Rights of access, correction and deletion under the law of your country (for example GDPR) concern the third-party operators of the brokers and hosting — please contact them.</p>
+
+    <h2>9. Changes</h2>
+    <p>If the game changes how it works (for example new servers or new data), this page is updated and the date above changes. The current version is always at <a href="https://rahim004.github.io/badminton-/privacy.html">https://rahim004.github.io/badminton-/privacy.html</a>.</p>
+  </section>
+  <p class="dim" style="margin-top:20px"><a href="./">← Играть / Play</a></p>
+</main>
+</body>
+</html>

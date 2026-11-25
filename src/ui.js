@@ -29,7 +29,7 @@ import { heroById } from './ui/heroes.js';
 import { portrait } from './ui/portrait.js';
 import { buildProfileScreens, topBar, plural } from './ui/profileScreens.js';
 import { createOnline, parseRoomHash } from './ui/online.js';
-import { buildDownloadScreen, downloadAvailable } from './ui/download.js';
+import { buildDownloadScreen, downloadAvailable, privacyLink } from './ui/download.js';
 import { pwa } from './pwa.js';
 
 const MODE_LABEL = { singles: '1 × 1', doubles: '2 × 2' };
@@ -148,7 +148,8 @@ export function createUI(root, handlers = {}) {
       controlsInSettings,
       h('p', { class: 'note' }, touch
         ? 'Слева — джойстик, справа — кнопки «Удар», «Клир», «Смэш/Дроп», «Сетка». Свайпы включаются в разделе «Управление».'
-        : 'WASD или стрелки — бег, пробел — удар, J — клир, K — смэш или дроп, L — сетка, Esc — пауза.'));
+        : 'WASD или стрелки — бег, пробел — удар, J — клир, K — смэш или дроп, L — сетка, Esc — пауза.'),
+      (() => { const p = privacyLink(); p.firstChild.id = 'privacyLink'; return p; })());
   }
 
   // ------------------------------------------------------------ пауза

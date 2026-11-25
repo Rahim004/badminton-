@@ -7,7 +7,7 @@
 import { h, icon, toast } from './dom.js';
 import { topBar } from './profileScreens.js';
 import { pwa } from '../pwa.js';
-import { VERSION, SITE_URL, RELEASE_LATEST, RELEASES_PAGE, DOWNLOADS } from '../version.js';
+import { VERSION, SITE_URL, PRIVACY_URL, RELEASE_LATEST, RELEASES_PAGE, DOWNLOADS } from '../version.js';
 
 export function downloadAvailable() { return !pwa.isInstalled(); }
 
@@ -83,6 +83,11 @@ function dlLink(id, d, cls) {
     h('span', { class: 'bar-sub' }, `${d.file} · ${d.size}`));
 }
 
+/** Ссылка на политику конфиденциальности (в приложении откроется во внешнем браузере). */
+export function privacyLink() {
+  return h('p', { class: 'note center' }, h('a', { id: 'privacyLinkDl', href: PRIVACY_URL, target: '_blank', rel: 'noopener noreferrer' }, 'Политика конфиденциальности'));
+}
+
 export function buildDownloadScreen(nav) {
   const body = h('div', { class: 'dl-body' });
   const el = h('div', { class: 'screen hidden', id: 'download' },
@@ -96,7 +101,8 @@ export function buildDownloadScreen(nav) {
 
     if (pwa.inNativeApp()) {
       body.append(h('div', { class: 'block dl-state' }, h('h3', {}, 'Вы уже в приложении'), h('p', { class: 'note' }, 'Это приложение «Волан», игра хранится на устройстве и работает без интернета (против ИИ). Для онлайна с друзьями нужна сеть.')),
-        h('p', { class: 'note center', id: 'dlVersion' }, `Версия ${VERSION}`));
+        h('p', { class: 'note center', id: 'dlVersion' }, `Версия ${VERSION}`),
+        privacyLink());
       return;
     }
 
@@ -148,7 +154,7 @@ export function buildDownloadScreen(nav) {
           h('li', {}, 'Полный экран — F11.'))),
       h('p', { class: 'note' }, 'Файлы лежат на GitHub. Если ссылка не открывается, включите VPN или установите игру из браузера (выше). ',
         h('a', { href: RELEASES_PAGE, target: '_blank', rel: 'noopener noreferrer' }, 'Все версии')));
-    body.append(files, h('p', { class: 'note center', id: 'dlVersion' }, `Версия ${VERSION}`));
+    body.append(files, h('p', { class: 'note center', id: 'dlVersion' }, `Версия ${VERSION}`), privacyLink());
   }
 
   return {

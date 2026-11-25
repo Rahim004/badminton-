@@ -1,9 +1,8 @@
 <resources>
+    <!-- targetSdk 35+: окно всегда «от края до края»; цвета системных панелей и windowFullscreen устарели и не нужны.
+         Панели скрываются в MainActivity (immersive), вырезы и клавиатура учитываются через WindowInsets. -->
     <style name="Theme.Volan" parent="@android:style/Theme.Material.NoActionBar">
-        <item name="android:windowFullscreen">true</item>
         <item name="android:windowBackground">@color/volan_ink</item>
-        <item name="android:statusBarColor">@color/volan_ink</item>
-        <item name="android:navigationBarColor">@color/volan_ink</item>
         <item name="android:windowLayoutInDisplayCutoutMode">shortEdges</item>
     </style>
 </resources>

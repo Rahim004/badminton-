@@ -2,8 +2,11 @@
 #   * push тега v*  (например: git tag v1.0.1 && git push origin v1.0.1) — собрать всё и выложить Release;
 #   * Run workflow (workflow_dispatch) — собрать всё и положить файлы в artifacts; галочка «publish» — ещё и Release.
 # Файлы Release (имена менять нельзя — на них ссылается экран «Скачать игру», src/version.js):
-#   Volan.apk (Android), Volan.exe (Windows, портативный), Volan.AppImage (Linux), SHA256SUMS.txt
-# Подпись APK: секреты репозитория ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
+#   Volan.apk (Android), Volan.aab (Android App Bundle — для Google Play), Volan.exe (Windows, портативный),
+#   Volan.AppImage (Linux), SHA256SUMS.txt
+#   Volan.aab появляется ТОЛЬКО при заданных секретах подписи (ключ загрузки Google Play). Без секретов вместо него
+#   собирается Volan-NOT-FOR-PLAY.aab (подписан публичным ключом из репозитория) — в Google Play его загружать нельзя.
+# Подпись APK и AAB: секреты репозитория ANDROID_KEYSTORE_BASE64, ANDROID_KEYSTORE_PASSWORD, ANDROID_KEY_ALIAS,
 #   ANDROID_KEY_PASSWORD — тогда APK подписан вашим ключом; без секретов — публичным ключом android/volan-public.jks
 #   (одинаковым у всех релизов, поэтому APK обновляется поверх старого). Подробности — README, «Скачать и установить».
 name: Release
@@ -64,10 +67,11 @@ jobs:
           java-version: '17'
       - uses: gradle/actions/setup-gradle@v4
         with:
-          gradle-version: '8.9'
+          gradle-version: '8.14.3'
       - name: Файлы игры в assets приложения
         run: node tools/stage-web.mjs android/app/src/main/assets
       - name: Ключ подписи (если заданы секреты)
+        id: key
         env:
           KS_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
           KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
@@ -82,24 +86,44 @@ jobs:
               echo "VOLAN_KEY_ALIAS=$KEY_ALIAS"
               echo "VOLAN_KEY_PASS=${KEY_PASS:-$KS_PASS}"
             } >> "$GITHUB_ENV"
-            echo "APK будет подписан ключом из секретов репозитория"
+            echo "own=true" >> "$GITHUB_OUTPUT"
+            echo "APK и AAB будут подписаны ключом из секретов репозитория"
           else
-            echo "Секреты подписи не заданы — APK подписывается публичным ключом android/volan-public.jks"
+            echo "own=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Нет секретов подписи::APK/AAB подписываются ПУБЛИЧНЫМ ключом android/volan-public.jks. Такой .aab нельзя загружать в Google Play — создайте свой ключ загрузки (tools/make-upload-key.md) и добавьте 4 секрета."
           fi
-      - name: Сборка release APK
+      - name: Сборка release APK и AAB
         working-directory: android
-        run: gradle --no-daemon assembleRelease -PversionName=${{ needs.check.outputs.version }}
-      - name: Проверка подписи и имя файла
+        run: gradle --no-daemon assembleRelease bundleRelease -PversionName=${{ needs.check.outputs.version }}
+      - name: Проверка подписи и имена файлов
+        env:
+          OWN_KEY: ${{ steps.key.outputs.own }}
         run: |
           mkdir -p dist
           cp android/app/build/outputs/apk/release/app-release.apk dist/Volan.apk
+          if [ "$OWN_KEY" = "true" ]; then AAB=dist/Volan.aab; else AAB=dist/Volan-NOT-FOR-PLAY.aab; fi
+          cp android/app/build/outputs/bundle/release/app-release.aab "$AAB"
           BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
           "$BT/apksigner" verify --print-certs dist/Volan.apk | head -3
-          ls -l dist/Volan.apk
+          jarsigner -verify "$AAB" > "$RUNNER_TEMP/jv.txt" && head -1 "$RUNNER_TEMP/jv.txt"
+          keytool -printcert -jarfile "$AAB" | grep -E "Owner|SHA256"
+          ls -l dist
+          {
+            echo "### Android"
+            if [ "$OWN_KEY" = "true" ]; then
+              echo "- \`Volan.aab\` подписан ключом загрузки из секретов — его можно загружать в Google Play Console."
+            else
+              echo "- :warning: секретов подписи нет: \`Volan-NOT-FOR-PLAY.aab\` подписан ПУБЛИЧНЫМ ключом и **не должен** загружаться в Google Play. См. tools/make-upload-key.md."
+            fi
+            echo "- SHA-256 сертификата AAB:"
+            keytool -printcert -jarfile "$AAB" | grep SHA256 | sed 's/^/  - /'
+          } >> "$GITHUB_STEP_SUMMARY"
       - uses: actions/upload-artifact@v4
         with:
-          name: volan-apk
-          path: dist/Volan.apk
+          name: volan-android
+          path: |
+            dist/Volan.apk
+            dist/*.aab
           if-no-files-found: error
 
   windows:
@@ -166,7 +190,12 @@ jobs:
         working-directory: dist
         run: |
           ls -l
-          sha256sum Volan.apk Volan.exe Volan.AppImage | tee SHA256SUMS.txt
+          sha256sum Volan.apk Volan*.aab Volan.exe Volan.AppImage | tee SHA256SUMS.txt
+          if [ -f Volan-NOT-FOR-PLAY.aab ]; then
+            echo "AAB_NOTE=- **Android App Bundle:** \`Volan-NOT-FOR-PLAY.aab\` — подписан публичным ключом, в Google Play НЕ загружать (нужны секреты подписи, см. tools/make-upload-key.md)." >> "$GITHUB_ENV"
+          else
+            echo "AAB_NOTE=- **Google Play:** \`Volan.aab\` — Android App Bundle, подписан ключом загрузки; для магазина, обычным пользователям не нужен." >> "$GITHUB_ENV"
+          fi
       - name: Выложить Release
         uses: softprops/action-gh-release@v2
         with:
@@ -176,11 +205,13 @@ jobs:
             **Волан ${{ needs.check.outputs.version }}** — бадминтон против ИИ и с друзьями онлайн.
 
             - **Android:** `Volan.apk` — скачайте и откройте (разрешите установку из неизвестных источников).
+            ${{ env.AAB_NOTE }}
             - **Windows:** `Volan.exe` — портативная версия, установка не нужна.
             - **Linux:** `Volan.AppImage` — `chmod +x Volan.AppImage && ./Volan.AppImage`.
             - **Без скачивания:** https://rahim004.github.io/badminton-/ — можно «Установить» из браузера.
           files: |
             dist/Volan.apk
+            dist/*.aab
             dist/Volan.exe
             dist/Volan.AppImage
             dist/SHA256SUMS.txt

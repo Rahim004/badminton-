@@ -5,6 +5,7 @@ import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Bundle;
+import android.view.DisplayCutout;
 import android.view.View;
 import android.view.Window;
 import android.view.WindowInsets;
@@ -18,6 +19,8 @@ import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
+import android.window.OnBackInvokedCallback;
+import android.window.OnBackInvokedDispatcher;
 import android.widget.Toast;
 
 import androidx.webkit.WebViewAssetLoader;
@@ -53,7 +56,9 @@ public class MainActivity extends Activity {
         web = new WebView(this);
         web.setBackgroundColor(0xFF17134A);
         setContentView(web);
+        applyEdgeToEdge();
         hideSystemUi();
+        registerBackCallback();
 
         WebSettings s = web.getSettings();
         s.setJavaScriptEnabled(true);
@@ -129,6 +134,43 @@ public class MainActivity extends Activity {
         try { startActivity(new Intent(Intent.ACTION_VIEW, u)); } catch (Exception ignored) { }
     }
 
+    /**
+     * Android 15+ (и targetSdk 35+) всегда рисует приложение «от края до края»: окно уходит под системные панели,
+     * вырез камеры и клавиатуру. Игра в WebView скрывает панели (immersive), но вырез, временно показанные
+     * свайпом панели и клавиатура (ввод ника) не должны перекрывать игру — сдвигаем WebView на размер этих областей.
+     * Фон за сдвигом закрашен цветом игры (windowBackground), поэтому полос другого цвета не видно.
+     */
+    private void applyEdgeToEdge() {
+        if (Build.VERSION.SDK_INT >= 30) {
+            web.setOnApplyWindowInsetsListener((v, insets) -> {
+                android.graphics.Insets i = insets.getInsets(
+                        WindowInsets.Type.systemBars() | WindowInsets.Type.displayCutout() | WindowInsets.Type.ime());
+                v.setPadding(i.left, i.top, i.right, i.bottom);
+                return WindowInsets.CONSUMED;
+            });
+        } else if (Build.VERSION.SDK_INT >= 28) {
+            web.setOnApplyWindowInsetsListener((v, insets) -> {
+                DisplayCutout c = insets.getDisplayCutout();
+                if (c != null) v.setPadding(c.getSafeInsetLeft(), c.getSafeInsetTop(), c.getSafeInsetRight(), c.getSafeInsetBottom());
+                else v.setPadding(0, 0, 0, 0);
+                return insets;
+            });
+        }
+        web.requestApplyInsets();
+    }
+
+    /**
+     * Predictive back (Android 13+, при targetSdk 36 включён всегда): onBackPressed() больше не вызывается,
+     * жест «Назад» приходит только в OnBackInvokedCallback. Обрабатываем его сами (пауза / шаг назад / двойное нажатие).
+     * Для Android 12 и ниже остаётся onBackPressed().
+     */
+    private void registerBackCallback() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            OnBackInvokedCallback cb = this::handleBack;
+            getOnBackInvokedDispatcher().registerOnBackInvokedCallback(OnBackInvokedDispatcher.PRIORITY_DEFAULT, cb);
+        }
+    }
+
     @SuppressWarnings("deprecation")
     private void hideSystemUi() {
         Window w = getWindow();
@@ -158,6 +200,11 @@ public class MainActivity extends Activity {
     @SuppressWarnings("deprecation")
     public void onBackPressed() {
         if (web == null) { super.onBackPressed(); return; }
+        handleBack();
+    }
+
+    private void handleBack() {
+        if (web == null) { finish(); return; }
         web.evaluateJavascript("(function(){try{return !!(window.__volan&&window.__volan.back());}catch(e){return false;}})()", value -> {
             if ("true".equals(value)) return;
             long now = System.currentTimeMillis();

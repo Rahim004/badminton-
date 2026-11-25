@@ -5,25 +5,34 @@ plugins {
 // Версия: -PversionName=1.2.3 (workflow берёт её из src/version.js); versionCode считается из неё.
 def vName = (project.findProperty('versionName') ?: '1.0.0').toString()
 def vParts = vName.tokenize('.').collect { (it.replaceAll('[^0-9]', '') ?: '0') as int }
+// 1.2.3 -> 10203 (мажор*10000 + минор*100 + патч). Google Play требует, чтобы versionCode каждой загрузки был больше
+// предыдущей, поэтому для любой новой загрузки поднимайте версию в src/version.js. Можно задать вручную: -PversionCode=NNN.
 def vCode = vParts[0] * 10000 + (vParts.size() > 1 ? vParts[1] : 0) * 100 + (vParts.size() > 2 ? vParts[2] : 0)
+if (project.findProperty('versionCode')) vCode = project.findProperty('versionCode').toString() as int
 
 android {
     namespace 'com.volan.badminton'
-    compileSdk 34
+    compileSdk 36
 
     defaultConfig {
         applicationId "com.volan.badminton"
         minSdk 24
-        targetSdk 34
+        targetSdk 36
         versionCode vCode
         versionName vName
     }
 
     buildFeatures { buildConfig true }
 
+    bundle {
+        // Один набор строк (ru) без разбиения по языкам: приложение однородное, лишние сплиты не нужны.
+        language { enableSplit = false }
+    }
+
     signingConfigs {
-        // Секреты репозитория (VOLAN_KEYSTORE и др.) → свой ключ; иначе — публичный ключ volan-public.jks,
-        // лежащий в репозитории: подпись одна и та же у всех релизов, поэтому APK обновляется поверх старого.
+        // Секреты репозитория (VOLAN_KEYSTORE и др.) → свой ключ (для .aab это ключ ЗАГРУЗКИ в Google Play);
+        // иначе — публичный ключ volan-public.jks из репозитория: подпись одна и та же у всех релизов, поэтому APK
+        // обновляется поверх старого. Публичным ключом подписанный .aab в Google Play загружать НЕЛЬЗЯ (ключ не секретный).
         release {
             def ks = System.getenv('VOLAN_KEYSTORE')
             if (ks) {

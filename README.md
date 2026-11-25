@@ -61,8 +61,8 @@ python3 -m http.server 8000
 2. `node tools/gen-sw.mjs` — обновить список файлов и хэш в `sw.js` (иначе `node --test tests/*.test.mjs`
    и CI упадут: офлайн-кэш устарел).
 3. Закоммитить, `git tag v<VERSION> && git push origin main v<VERSION>`.
-4. GitHub Actions (`.github/workflows/release.yml`) соберёт `Volan.apk`, `Volan.exe`, `Volan.AppImage`
-   и приложит их, вместе с `SHA256SUMS.txt`, к Release. Вручную: Actions → Release → Run workflow
+4. GitHub Actions (`.github/workflows/release.yml`) соберёт `Volan.apk`, `Volan.aab` (Android App Bundle для Google Play),
+   `Volan.exe`, `Volan.AppImage` и приложит их, вместе с `SHA256SUMS.txt`, к Release. Вручную: Actions → Release → Run workflow
    (галочка `publish` — ещё и Release).
 
 **Подпись APK.** Без настроек APK подписывается публичным ключом `android/volan-public.jks` из репозитория
@@ -79,11 +79,18 @@ base64 -w0 volan-release.jks    # → ANDROID_KEYSTORE_BASE64
 Внимание: APK с другой подписью нельзя поставить поверх старого — придётся удалить прежнюю версию
 (профиль лежит в приложении; перенесите его заранее кодом переноса профиля из раздела «Профиль»).
 
-**Локальная сборка** (нужны JDK 17, Android SDK 34, Gradle 8.9+, Node 22):
+**Google Play.** `Volan.aab` подписывается теми же секретами (ключ загрузки). Без секретов вместо него собирается
+`Volan-NOT-FOR-PLAY.aab` с публичным ключом — в Play его загружать нельзя. Как создать ключ: `tools/make-upload-key.md`.
+Приложение целится в Android 16 (targetSdk 36), versionCode считается из `VERSION` (1.2.3 → 10203). Политика
+конфиденциальности — `privacy.html` (https://rahim004.github.io/badminton-/privacy.html), тексты карточки, ответы на анкеты,
+графика и пошаговое руководство — `docs/play-store/` (начать с `GUIDE_RU.md`). Скриншоты и графику можно перегенерировать:
+`python3 tools/play-store-shots.py && python3 tools/play-graphics.py`.
+
+**Локальная сборка** (нужны JDK 17, Android SDK 36 + build-tools 36, Gradle 8.14+, Node 22):
 
 ```bash
 node tools/stage-web.mjs android/app/src/main/assets
-(cd android && gradle assembleRelease -PversionName=1.0.0)       # android/app/build/outputs/apk/release/
+(cd android && gradle assembleRelease bundleRelease -PversionName=1.0.0)   # apk/release/ и bundle/release/app-release.aab
 (cd desktop && npm ci && npm run dist:linux)                      # desktop/dist/Volan.AppImage (Windows .exe — на Windows или в CI)
 python3 tools/render-icons.py                                     # перерисовать иконки из tools/icon.svg
 ```

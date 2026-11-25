@@ -26,6 +26,11 @@ import { createUI } from './ui.js';
 import { createAudio } from './audio.js';
 import { createNet } from './net/index.js';
 import './pwa.js';   // service worker + установка (регистрируется сам, без ошибок в песочнице)
+import { platform } from './platform/index.js';
+import { watchDom } from './platform/i18n.js';
+
+// Площадка (порталы): SDK и язык — до построения интерфейса. На обычном сайте это мгновенно и ничего не меняет.
+await platform.init();
 
 const canvas = document.getElementById('game');
 const uiRoot = document.getElementById('ui');
@@ -51,6 +56,7 @@ const ui = createUI(uiRoot, {
   onQuit() { if (game.netDriver) game.netDriver.leave(); running = false; paused = false; game.phase = 'idle'; ui.showMenu(); },
 });
 ui.attach(game);
+watchDom(document.body);   // английский интерфейс на порталах (на ru — ничего не делает)
 
 let controls = loadControls();
 onControlsChange(c => { controls = c; input.setControls(c); if (game.cfg) game.cfg.assistStrength = c.assist; });
@@ -127,6 +133,10 @@ function resize() {
 window.addEventListener('resize', resize);
 window.addEventListener('orientationchange', () => setTimeout(resize, 120));
 if (window.visualViewport) window.visualViewport.addEventListener('resize', resize);
+// Пауза от площадки (Яндекс: game_api_pause — реклама, сворачивание): ставим игру на паузу и глушим звук.
+// По возобновлению звук возвращается, а матч остаётся на паузе — игрок сам нажимает «Продолжить».
+platform.onPause(() => { audio.hold('platform', true); if (running && !paused) setPaused(true); });
+platform.onResume(() => { audio.hold('platform', false); });
 document.addEventListener('visibilitychange', () => {
   if (game.netDriver && game.netDriver.online) { game.netDriver.setHidden(document.hidden); return; }
   if (document.hidden && running && !paused) setPaused(true);
@@ -163,6 +173,7 @@ const demoTimer = setInterval(() => {
   for (let i = 0; i < 2; i++) game.step(DT);
 }, 16);
 ui.showMenu();
+platform.ready();   // меню готово — игрок может начать (Яндекс LoadingAPI.ready, CrazyGames loadingStop)
 
 // ------------------------------------------------------------ онлайн
 const net = createNet(game);

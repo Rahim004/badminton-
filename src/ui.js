@@ -31,6 +31,7 @@ import { buildProfileScreens, topBar, plural } from './ui/profileScreens.js';
 import { createOnline, parseRoomHash } from './ui/online.js';
 import { buildDownloadScreen, downloadAvailable, privacyLink } from './ui/download.js';
 import { pwa } from './pwa.js';
+import { platform } from './platform/index.js';
 
 const MODE_LABEL = { singles: '1 × 1', doubles: '2 × 2' };
 
@@ -65,13 +66,13 @@ export function createUI(root, handlers = {}) {
       h('div', { class: 'brand' },
         meChip,
         h('h1', { class: 'logo' }, h('span', { class: 'logo-word' }, 'Волан'), h('span', { class: 'logo-mark' }, icon('shuttle'))),
-        h('p', { class: 'tag' }, 'Бадминтон: против ИИ и с друзьями по ссылке'), dlChip),
+        h('p', { class: 'tag' }, platform.onlineOk() ? 'Бадминтон: против ИИ и с друзьями по ссылке' : 'Бадминтон: против ИИ, 1 × 1 и 2 × 2'), dlChip),
       h('nav', { class: 'menu-actions', 'aria-label': 'Главное меню' },
         h('div', { class: 'ai-group' },
           h('button', { class: 'bar go hero-bar', id: 'start', type: 'button', onclick: startAI },
             h('span', { class: 'bar-label' }, 'Играть с ИИ'), aiSub),
           h('button', { class: 'bar tune', id: 'aiSetupBtn', type: 'button', 'aria-label': 'Режим и сложность', onclick: () => nav.go('aiSetup') }, icon('gear'))),
-        h('button', { class: 'bar sky', id: 'playFriends', type: 'button', onclick: () => nav.go('online') },
+        !platform.onlineOk() ? null : h('button', { class: 'bar sky', id: 'playFriends', type: 'button', onclick: () => nav.go('online') },
           h('span', { class: 'bar-label' }, 'Играть с друзьями'), h('span', { class: 'bar-sub' }, 'онлайн, 1 × 1 и 2 × 2')),
         h('div', { class: 'row2' },
           h('button', { class: 'bar', id: 'toProfile', type: 'button', onclick: () => nav.go(P.hasProfile() ? 'profile' : 'profileEdit') }, h('span', { class: 'bar-label' }, 'Профиль')),
@@ -149,7 +150,8 @@ export function createUI(root, handlers = {}) {
       h('p', { class: 'note' }, touch
         ? 'Слева — джойстик, справа — кнопки «Удар», «Клир», «Смэш/Дроп», «Сетка». Свайпы включаются в разделе «Управление».'
         : 'WASD или стрелки — бег, пробел — удар, J — клир, K — смэш или дроп, L — сетка, Esc — пауза.'),
-      (() => { const p = privacyLink(); p.firstChild.id = 'privacyLink'; return p; })());
+      platform.langSwitch() ? h('div', { class: 'set-row' }, h('span', {}, 'Язык / Language'), seg('lang', [['ru', 'Русский'], ['en', 'English']], platform.lang(), v => { if (v !== platform.lang()) platform.setLangPref(v); })) : null,
+      platform.canLinkOut() ? (() => { const p = privacyLink(); p.firstChild.id = 'privacyLink'; return p; })() : null);
   }
 
   // ------------------------------------------------------------ пауза
@@ -208,6 +210,7 @@ export function createUI(root, handlers = {}) {
     for (const [k, s] of Object.entries(screens)) s.el.classList.toggle('hidden', k !== name);
     pauseBtn.classList.toggle('hidden', name !== null);
     online.showHud(name === null && online.inMatch && !online.state.ended);
+    platform.gameplay(name === null);   // SDK площадки: идёт ли сам матч (экраны, пауза, итоги — нет)
     if (name && name !== 'pause' && name !== 'over') ui.setHint(null);
     if (name && screens[name]) {
       screens[name].open(arg);
@@ -285,6 +288,9 @@ export function createUI(root, handlers = {}) {
       });
       // Ссылка-приглашение #room-XXXXX — сразу ко входу в комнату.
       if (parseRoomHash()) setTimeout(() => online.handleHash(), 0);
+      else if (platform.instantMultiplayer()) setTimeout(() => nav.go('online', { autoHost: true }), 0);   // CrazyGames: открыто из «играть с друзьями» — сразу создаём комнату
+      // Приглашение, пришедшее уже внутри игры (CrazyGames): выйти из текущей комнаты и войти в новую.
+      platform.onJoinRoom(code => { if (online.inMatch) return; if (online.active) online.leave(); nav.go('online', { joinCode: code }); });
     },
   };
   let lastRecord = null;

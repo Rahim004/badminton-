@@ -22,6 +22,7 @@ import { heroById } from './heroes.js';
 import { topBar, codePlate, plural } from './profileScreens.js';
 import * as P from '../profile/index.js';
 import { SITE_URL } from '../version.js';
+import { platform } from '../platform/index.js';
 import { DIFFICULTY, DIFFICULTY_ORDER, MATCH_FORMATS, CHARACTER_ORDER } from '../config.js';
 
 export const EMOTES = [
@@ -66,7 +67,7 @@ function unavailableNet() {
 
 export function parseRoomHash(hash = globalThis.location ? location.hash : '') {
   const m = /^#room-([A-Za-z]{5})$/.exec(hash || '');
-  return m ? m[1].toUpperCase() : null;
+  return m ? m[1].toUpperCase() : platform.inviteRoom();   // на CrazyGames код приходит параметром приглашения
 }
 
 export function createOnline(ctx) {
@@ -137,6 +138,7 @@ export function createOnline(ctx) {
     if (!l) return;
     S.lobby = l; if (l.code) S.code = l.code;
     if (!S.link && S.code) S.link = roomLink(S.code);
+    roomSync();
     if (current === 'online' && !S.inMatch) nav.go('lobby');
     renderLobby();
   }
@@ -160,7 +162,17 @@ export function createOnline(ctx) {
   }
 
   // ------------------------------------------------------------ места и игроки
+  // Сообщаем площадке о комнате (CrazyGames: друзья видят её и могут зайти). Повторы с тем же состоянием отбрасываем.
+  let roomKey = '';
+  function roomSync() {
+    if (!S.code) return;
+    const key = S.code + (S.inMatch ? ':0' : ':1');
+    if (key !== roomKey) { roomKey = key; platform.roomUpdate(S.code, !S.inMatch); }
+  }
+  function roomClosed() { if (roomKey) { roomKey = ''; platform.roomLeft(); } }
   function roomLink(code) {   // в приложении (APK/exe) адрес локальный — зовём друзей на сайт
+    const pl = platform.roomLink(code);   // порталы: ссылка площадки или null (только код комнаты)
+    if (pl !== undefined) return pl;
     try { if (/VolanApp/.test(navigator.userAgent)) return `${SITE_URL}#room-${code}`; return `${location.origin}${location.pathname}#room-${code}`; } catch (_) { return `#room-${code}`; }
   }
   function mySlot() {
@@ -208,10 +220,11 @@ export function createOnline(ctx) {
       h('p', { class: 'note' }, 'Введите 5 букв, которые прислал друг, или просто откройте его ссылку.'),
       h('div', { class: 'add-row' }, codeIn, joinBtn)),
     homeErr);
+  const unavailableNote = h('p', { class: 'note' }, platform.portal ? 'Не удалось подключиться к серверам игры. Проверьте интернет — против ИИ можно играть без сети.' : 'Здесь сеть закрыта. Откройте игру по ссылке на GitHub Pages — там можно создать комнату и позвать друга. Против ИИ можно играть и здесь.');
   const unavailableBox = h('div', { class: 'unavailable hidden', id: 'onlineUnavailable' },
     h('div', { class: 'big-icon' }, icon('people')),
-    h('h3', {}, 'Онлайн-игра работает в версии на GitHub'),
-    h('p', { class: 'note' }, 'Здесь сеть закрыта. Откройте игру по ссылке на GitHub Pages — там можно создать комнату и позвать друга. Против ИИ можно играть и здесь.'),
+    h('h3', {}, platform.portal ? 'Онлайн-игра сейчас недоступна' : 'Онлайн-игра работает в версии на GitHub'),
+    unavailableNote,
     h('button', { class: 'bar', type: 'button', onclick: () => nav.go('menu') }, h('span', { class: 'bar-label' }, 'В меню')));
   const loadingBox = h('p', { class: 'note center hidden' }, 'Загружаем онлайн…');
   const home = {
@@ -223,6 +236,7 @@ export function createOnline(ctx) {
       if (!net) { loadingBox.classList.remove('hidden'); homeBody.classList.add('hidden'); await ensureNet(); loadingBox.classList.add('hidden'); }
       paintHome();
       if (arg.joinCode && available()) join(arg.joinCode);
+      else if (arg.autoHost && available()) host();   // CrazyGames «instant multiplayer»: сразу своя комната
     },
   };
   function paintHome() {
@@ -241,7 +255,7 @@ export function createOnline(ctx) {
     S.busy = 'host'; homeErr.textContent = ''; paintHome();
     try {
       const r = await net.host({ ...createOpts, profile: me(), transport: testTransport });
-      S.code = r && r.code; S.link = (r && r.link) || roomLink(S.code);
+      S.code = r && r.code; S.link = platform.roomLink(S.code) === undefined ? ((r && r.link) || roomLink(S.code)) : roomLink(S.code);
       S.busy = false; paintHome();
       nav.go('lobby');
     } catch (e) { S.busy = false; homeErr.textContent = errorText(e && (e.code || e.message) ? e : 'network'); paintHome(); }
@@ -273,6 +287,8 @@ export function createOnline(ctx) {
   const shareBtn = h('button', { class: 'bar small', id: 'shareLink', type: 'button', onclick: share }, icon('share'), h('span', { class: 'bar-label' }, 'Отправить'));
   const linkField = h('input', { class: 'field mono link-field', id: 'roomLink', readonly: true, 'aria-label': 'Ссылка на комнату' });
   const lobbyMeta = h('div', { class: 'lobby-meta' });
+  const copyLabel = h('span', { class: 'bar-label' }, 'Скопировать ссылку');
+  const shareNote = h('p', { class: 'note' }, 'Отправьте ссылку в Telegram или WhatsApp — по ней друг сразу попадёт в комнату.');
   const lobby = {
     el: h('div', { class: 'screen hidden', id: 'lobby' },
       h('div', { class: 'sheet wide' },
@@ -281,10 +297,10 @@ export function createOnline(ctx) {
           h('div', { class: 'room-code-wrap' }, h('div', { class: 'field-label' }, 'Код комнаты'), plateBox, lobbyMeta),
           h('div', { class: 'room-share' },
             h('div', { class: 'add-row' },
-              h('button', { class: 'bar sky', id: 'copyLink', type: 'button', onclick: copyLink }, icon('copy'), h('span', { class: 'bar-label' }, 'Скопировать ссылку')),
+              h('button', { class: 'bar sky', id: 'copyLink', type: 'button', onclick: copyLink }, icon('copy'), copyLabel),
               navigator.share ? shareBtn : null),
             linkField,
-            h('p', { class: 'note' }, 'Отправьте ссылку в Telegram или WhatsApp — по ней друг сразу попадёт в комнату.'))),
+            shareNote)),
         statusEl,
         seatsEl,
         lobbyErr,
@@ -293,6 +309,11 @@ export function createOnline(ctx) {
     open() { lobbyErr.textContent = ''; renderLobby(); },
   };
   async function copyLink() {
+    if (!S.link) {   // портал без ссылок-приглашений: делимся кодом комнаты
+      const rc = await copyText(S.code || '');
+      toast(rc === 'copied' ? 'Код комнаты скопирован — назовите его другу' : 'Не удалось скопировать — назовите код другу вслух', rc === 'copied' ? 'ok' : 'err');
+      return;
+    }
     const r = await copyText(S.link || '', linkField);
     linkField.classList.toggle('shown', r !== 'copied');
     toast(r === 'copied' ? 'Ссылка скопирована — отправьте её другу' : 'Ссылка выделена — скопируйте её вручную', r === 'copied' ? 'ok' : 'err');
@@ -333,6 +354,10 @@ export function createOnline(ctx) {
     plateBox.textContent = '';
     plateBox.append(codePlate(S.code || '·····', { big: true, label: 'Код комнаты ' + (S.code || '') }));
     linkField.value = S.link || '';
+    const noLink = !S.link;   // портал без ссылок-приглашений (Яндекс Игры): только код комнаты
+    linkField.classList.toggle('hidden', noLink); shareBtn.classList.toggle('hidden', noLink);
+    copyLabel.textContent = noLink ? 'Скопировать код' : 'Скопировать ссылку';
+    shareNote.textContent = noLink ? 'Сообщите другу код комнаты — он вводит его в разделе «Играть с друзьями».' : 'Отправьте ссылку в Telegram или WhatsApp — по ней друг сразу попадёт в комнату.';
     seatsEl.textContent = '';
     if (!l) { waitNote.textContent = 'Подключаемся к комнате…'; readyBtn.classList.add('hidden'); startBtn.classList.add('hidden'); lobbyMeta.textContent = ''; paintStatus(); return; }
     const fmt = MATCH_FORMATS[l.format];
@@ -476,7 +501,7 @@ export function createOnline(ctx) {
 
   // ------------------------------------------------------------ старт / конец матча
   function onStart(e) {
-    S.inMatch = true; S.ended = false; S.overShown = false; S.wantRematch = false; S.smashes = 0;
+    S.inMatch = true; S.ended = false; S.overShown = false; S.wantRematch = false; S.smashes = 0; roomSync();
     if (e && e.slots && S.lobby) S.lobby = { ...S.lobby, slots: e.slots };
     const l = S.lobby || { mode: (e && e.mode) || 'singles', slots: [] };
     const mine = mySlot();
@@ -523,7 +548,7 @@ export function createOnline(ctx) {
       const text = errorText(e.message ? e : (e.reason === 'left' ? null : e.reason));
       const wasIn = S.inMatch;
       hideDrop(); ctx.showHud(false);
-      S.inMatch = false; S.lobby = null; S.code = null; S.status = 'idle';
+      S.inMatch = false; S.lobby = null; S.code = null; S.status = 'idle'; roomClosed();
       if (e.reason === 'left') return; // сами вышли
       if (wasIn) toast(text, 'err');
       else { homeErr.textContent = text; if (current === 'lobby') nav.go('online', { keep: true }); }
@@ -596,7 +621,7 @@ export function createOnline(ctx) {
     nav.go('onlineOver');
   }
   function rematch() {
-    S.inMatch = false; S.wantRematch = true;
+    S.inMatch = false; S.wantRematch = true; roomSync();
     try { if (!isHost()) net.setReady(true); } catch (_) { /* */ } // хост жмёт «Начать», когда все готовы
     if (ctx.handlers.onOnlineLobby) ctx.handlers.onOnlineLobby();
     else if (S.matchStarted) { S.matchStarted = false; ctx.handlers.onQuit?.(); } // остановить локальный матч
@@ -606,6 +631,7 @@ export function createOnline(ctx) {
     hideDrop(); ctx.showHud(false);
     if (net && (S.code || S.lobby)) { try { net.leave(); } catch (_) { /* */ } }
     if (S.matchStarted) { S.matchStarted = false; ctx.handlers.onQuit?.(); } // матч ещё идёт в main.js — остановить
+    roomClosed();
     S.code = null; S.link = null; S.lobby = null; S.inMatch = false; S.ended = false; S.busy = false; S.status = 'idle'; S.ms = null; S.route = null;
     try { if (parseRoomHash()) history.replaceState(null, '', location.pathname + location.search); } catch (_) { /* */ }
   }

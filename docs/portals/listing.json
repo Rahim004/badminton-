@@ -1,0 +1,81 @@
+{
+ "yandex": {
+  "ru": {
+   "title": "Волан: бадминтон",
+   "short": "Бадминтон в аниме-стиле: против ИИ и онлайн с друзьями",
+   "seo": "Играйте в бадминтон онлайн: матчи 1×1 и 2×2 против ИИ, мультиплеер с друзьями по коду комнаты, правила BWF, шесть героев.",
+   "about": "Волан — бадминтон в аниме-стиле по официальным правилам BWF. Играйте один на один или в паре с ИИ-напарником, выбирайте одного из шести героев и сложность — от «Новичка» до «Легенды».\n\nВолан летит по «парашютной» физике: после смэша быстро теряет скорость и плавно опускается, поэтому важно читать траекторию и успевать под него. Клир, смэш, дроп и подставка у сетки — четыре удара под палец, а точный тайминг даёт удар «Идеально!».\n\nПозовите друга: создайте комнату, назовите код — и играйте онлайн 1×1 или 2×2. Против ИИ можно играть и без интернета. Регистрация не нужна, профиль хранится на вашем устройстве.",
+   "how": "Компьютер: бег — WASD или стрелки, удар — пробел, клир — J, смэш или дроп — K, подставка у сетки — L, пауза — Esc. На подаче пробел — короткая, J — длинная.\n\nТелефон: слева появляется джойстик там, где коснулись пальцем, справа — кнопки «Удар», «Клир», «Смэш/Дроп» и «Сетка». В настройках можно включить управление свайпами, режим левши и силу автобега.\n\nСмотрите на кольцо вокруг волана: когда оно совпало с внутренним, нажимайте удар — получится «Идеально!». Чтобы сыграть с другом, выберите «Играть с друзьями» → «Создать комнату» и назовите ему пятибуквенный код, друг введёт его в разделе «Комната друга».",
+   "keywords": "бадминтон, волан, спорт, ракетка, онлайн, с друзьями, на двоих, аниме"
+  },
+  "en": {
+   "title": "Volan: Badminton",
+   "short": "Anime-style badminton: vs AI and online with friends",
+   "seo": "Play badminton online: 1v1 and 2v2 matches against the AI, multiplayer with friends by room code, BWF rules, six heroes to choose from.",
+   "about": "Volan is anime-style badminton with official BWF rules. Play singles or doubles with an AI partner, pick one of six heroes and a difficulty from Beginner to Legend.\n\nThe shuttle follows \"parachute\" physics: it slows down fast after a smash and floats down, so reading its flight and getting under it matters. Clear, smash, drop and net shot are four shots under your thumb, and good timing gives you a \"Perfect!\" hit.\n\nInvite a friend: create a room, share the code and play online 1v1 or 2v2. Matches against the AI also work offline. No sign-up needed, your profile is stored on your device.",
+   "how": "Computer: move with WASD or arrows, hit with Space, clear with J, smash or drop with K, net shot with L, pause with Esc. When serving, Space is a short serve and J is a long one.\n\nPhone: a joystick appears on the left where you touch, shot buttons Hit, Clear, Smash/Drop and Net are on the right. In Settings you can switch to swipe controls, left-handed mode and tune auto-run.\n\nWatch the ring around the shuttle: when it meets the inner ring, hit - you get a \"Perfect!\" shot. To play with a friend choose Play with friends, then Create room, and tell your friend the five-letter code; they enter it under \"Friend's room\".",
+   "keywords": "badminton, shuttlecock, sports, racket, online, multiplayer, two players, anime"
+  },
+  "tags": [
+   "бадминтон",
+   "спорт",
+   "мультиплеер",
+   "на двоих",
+   "против ИИ",
+   "аниме",
+   "ракетка",
+   "онлайн",
+   "с друзьями",
+   "2D",
+   "аркада",
+   "без регистрации"
+  ]
+ },
+ "crazygames": {
+  "en": {
+   "title": "Volan: Badminton",
+   "short": "Anime-style badminton: beat the AI or play online with friends.",
+   "description": "Volan is anime-style badminton with official BWF rules. Play singles or doubles with an AI partner, pick one of six heroes and a difficulty from Beginner to Legend.\n\nThe shuttle follows \"parachute\" physics: it slows down fast after a smash and floats down, so reading its flight and getting under it matters. Clear, smash, drop and net shot are four shots under your thumb; hit when the timing ring closes for a \"Perfect!\" shot.\n\nCreate a room and invite a friend through CrazyGames to play 1v1 or 2v2 online. Matches against the AI work without any sign-up.",
+   "instructions": "Computer: move - WASD or arrow keys. Hit - Space or Shift. Clear - J or Z. Smash / drop - K or X. Net shot - L or C. Pause - Esc. Serve: Space for a short serve, J for a long one.\nPhone and tablet: use the floating joystick on the left and the shot buttons on the right (swipe controls are available in Settings).\nOnline: Play with friends -> Create room, then invite a friend with the CrazyGames invite link."
+  },
+  "ru": {
+   "title": "Волан: бадминтон",
+   "short": "Бадминтон в аниме-стиле: против ИИ и онлайн с друзьями.",
+   "description": "Волан — бадминтон в аниме-стиле по официальным правилам BWF. Играйте один на один или вдвоём с ИИ-напарником, выбирайте одного из шести героев и сложность от «Новичка» до «Легенды».\n\nВолан летит по «парашютной» физике: после смэша быстро теряет скорость и плавно опускается. Клир, смэш, дроп и подставка у сетки — четыре удара под палец; нажмите, когда кольцо тайминга сойдётся, — получится «Идеально!».\n\nСоздайте комнату и позовите друга через CrazyGames — играйте онлайн 1×1 или 2×2. Против ИИ можно играть без регистрации.",
+   "instructions": "Компьютер: бег — WASD или стрелки; удар — пробел или Shift; клир — J или Z; смэш/дроп — K или X; подставка — L или C; пауза — Esc. Подача: пробел — короткая, J — длинная.\nТелефон и планшет: плавающий джойстик слева и кнопки ударов справа (свайпы — в настройках).\nОнлайн: «Играть с друзьями» → «Создать комнату», затем позовите друга ссылкой-приглашением CrazyGames."
+  },
+  "tags": [
+   "badminton",
+   "sports",
+   "multiplayer",
+   "anime",
+   "2 player",
+   "racket",
+   "online",
+   "ai",
+   "casual",
+   "mobile"
+  ]
+ },
+ "itch": {
+  "en": {
+   "title": "Volan",
+   "tagline": "Anime-style badminton: play vs AI or online with friends",
+   "description": "**Volan** is anime-style badminton that runs right in your browser - on desktop and on your phone.\n\n* Official BWF rules: diagonal serves, games to 21 with a 2-point lead, faults, net, change of ends.\n* \"Parachute\" shuttle physics: light, slows fast after a smash, so reading the flight matters.\n* Time your swing: when the ring around the shuttle meets the inner one you get a **Perfect!** hit. Clear, smash, drop and net shot.\n* Singles (1v1) and doubles (2v2 with an AI partner), four AI levels from Beginner to Legend, three match formats.\n* Online with friends: create a room, send the link or the 5-letter code, play 1v1 or 2v2. Matches against the AI work offline.\n* Six heroes, nickname, stats, friend code. No account, no ads, no tracking - the profile lives in your browser.\n\n**Controls**\n\n* Keyboard: WASD / arrows - move, Space - hit, J - clear, K - smash or drop, L - net, Esc - pause.\n* Touch: floating joystick on the left, shot buttons on the right (swipe controls in Settings).\n\n*Online mode uses public relay servers and direct WebRTC connections; only your nickname, hero and game inputs are sent to the other players in the room.*\n\nInterface languages: Russian and English. The game is also available as an installable web app, an Android APK and a Windows/Linux build - see the \"Download\" screen in the game menu.",
+   "ru": "**Волан** — бадминтон в аниме-стиле прямо в браузере, на компьютере и на телефоне. Правила BWF, «парашютная» физика волана, удары «Идеально!» по таймингу, против ИИ и онлайн с друзьями (1×1 и 2×2). Без регистрации и рекламы. Интерфейс на русском и английском."
+  },
+  "genre": "Sports",
+  "tags": [
+   "badminton",
+   "sports",
+   "anime",
+   "multiplayer",
+   "online-multiplayer",
+   "singleplayer",
+   "casual",
+   "arcade",
+   "mobile",
+   "short"
+  ]
+ }
+}

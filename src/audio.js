@@ -25,6 +25,7 @@
 import { RECIPES, HIT_TYPES, startSound, renderSound, rateFor } from './audio/bank.js';
 import { SHOTS, COURT } from './config.js';
 import { resolveShotType } from './player.js';
+import { platform } from './platform/index.js';
 
 const SETTINGS_KEY = 'volan.settings';
 const MAX_VOICES = 24;
@@ -139,6 +140,7 @@ export function createAudio() {
   const pstate = new Map();
   let lastGT = -1;
   const mood = { rallyHits: 0, hush: 0, lastLand: null };
+  const holds = new Set();               // причины, по которым звук заморожен (см. A.hold)
 
   const debug = {
     events: {}, played: {}, dropped: {}, scheduled: 0, errors: 0, lastError: null,
@@ -169,11 +171,19 @@ export function createAudio() {
           const sb = ctx.createBufferSource(); sb.buffer = ctx.createBuffer(1, 1, ctx.sampleRate); sb.connect(ctx.destination); sb.start(0);
           pump();
         }
-        if (ctx.state === 'suspended' && !A.muted && !(globalThis.document && document.hidden)) ctx.resume().catch(() => {});
+        if (ctx.state === 'suspended' && !A.muted && !holds.size && !(globalThis.document && document.hidden)) ctx.resume().catch(() => {});
       } catch (e) { fail(e); }
     },
 
     setMuted(b) { A.muted = !!b; applyVolume(); },
+    /** Внешняя «заморозка» звука (потеря фокуса, пауза площадки): пока есть хоть одна причина — контекст остановлен. */
+    hold(reason, on) {
+      if (on) holds.add(reason); else holds.delete(reason);
+      if (!ctx) return;
+      if (holds.size) ctx.suspend().catch(() => {});
+      else if (!A.muted && !(globalThis.document && document.hidden)) ctx.resume().catch(() => {});
+    },
+    get held() { return holds.size > 0; },
     setVolume(v) { A.volume = clamp(+v || 0, 0, 1); applyVolume(); },
 
     playHit(type, power = 0.5, info = {}) {
@@ -257,7 +267,7 @@ export function createAudio() {
     if (instant) G.volume.gain.setValueAtTime(v, t); else G.volume.gain.setTargetAtTime(v, t, 0.04);
     if (A.muted) {
       setTimeout(() => { if (A.muted && ctx.state === 'running') ctx.suspend().catch(() => {}); }, 200);
-    } else if (ctx.state === 'suspended' && !(globalThis.document && document.hidden)) ctx.resume().catch(() => {});
+    } else if (ctx.state === 'suspended' && !holds.size && !(globalThis.document && document.hidden)) ctx.resume().catch(() => {});
   }
 
   /** Фоновый синтез банка порциями (не блокирует кадры). */
@@ -627,11 +637,16 @@ export function createAudio() {
       const s = readSettings(); A.muted = !s.sound; A.volume = s.volume; applyVolume();
     });
   }
+  // На порталах (Яндекс Игры требуют) звук умолкает, когда окно игры теряет фокус.
+  if (platform.portal && typeof globalThis.addEventListener === 'function') {
+    globalThis.addEventListener('blur', () => A.hold('blur', true));
+    globalThis.addEventListener('focus', () => A.hold('blur', false));
+  }
   if (globalThis.document && document.addEventListener) {
     document.addEventListener('visibilitychange', () => {
       if (!ctx) return;
       if (document.hidden) ctx.suspend().catch(() => {});
-      else if (!A.muted) ctx.resume().catch(() => {});
+      else if (!A.muted && !holds.size) ctx.resume().catch(() => {});
     });
     // щелчки интерфейса
     document.addEventListener('click', ev => {

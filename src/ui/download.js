@@ -7,9 +7,10 @@
 import { h, icon, toast } from './dom.js';
 import { topBar } from './profileScreens.js';
 import { pwa } from '../pwa.js';
+import { platform } from '../platform/index.js';
 import { VERSION, SITE_URL, PRIVACY_URL, RELEASE_LATEST, RELEASES_PAGE, DOWNLOADS } from '../version.js';
 
-export function downloadAvailable() { return !pwa.isInstalled(); }
+export function downloadAvailable() { return platform.canLinkOut() && !pwa.isInstalled(); }
 
 /** Инструкции по платформам: ключ → { title, steps[], note? } */
 export const GUIDES = {

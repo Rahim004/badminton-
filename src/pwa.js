@@ -7,6 +7,7 @@
  * Ничего не бросает: в песочнице (iframe без allow-same-origin), file://, старых браузерах всё молча выключено.
  */
 import { VERSION } from './version.js';
+import { platform } from './platform/index.js';
 
 /** Чистая функция (тестируется в node): ua, число касаний, платформа navigator. */
 export function detectPlatform(ua = '', maxTouch = 0, navPlatform = '') {
@@ -70,6 +71,7 @@ export const pwa = {
   /** Регистрация service worker; true — запрос на регистрацию отправлен. Тихо отказывается где нельзя. */
   registerSW() {
     try {
+      if (!platform.swAllowed()) return Promise.resolve(false);   // порталы (itch/Яндекс/CrazyGames): без service worker
       if (!('serviceWorker' in navigator)) return Promise.resolve(false);
       if (!/^https?:$/.test(location.protocol)) return Promise.resolve(false);
       if (pwa.inNativeApp()) return Promise.resolve(false);   // файлы уже внутри приложения

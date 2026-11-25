@@ -23,6 +23,7 @@
  *   fx.reduced
  */
 import { FONT_DISPLAY } from './arena.js';
+import { t as tl } from '../platform/i18n.js';
 // Размер надписей «БАХ!», «СМЭШ!» и т. п. — доля меньшей стороны экрана (было 0.12 — мешало игре).
 const CALLOUT_K = 0.062;
 
@@ -213,6 +214,7 @@ export function createEffects() {
     }
   }
   function callout(text, x, y, o = {}) {
+    text = tl(text);
     const R = FX.R;
     const old = FX.callouts.findIndex(c => c.text === text);
     if (old >= 0) FX.callouts.splice(old, 1);
@@ -235,6 +237,7 @@ export function createEffects() {
     if (FX.callouts.length > 3) FX.callouts.shift();
   }
   function banner(text, sub, color, life, big) {
+    text = tl(text); sub = sub ? tl(sub) : sub;
     FX.banners = FX.banners.filter(b => !(big && b.big) && b.text !== text);
     FX.banners.push({ text, sub, color, t: 0, life, big });
     if (FX.banners.length > 3) FX.banners.splice(0, FX.banners.length - 3);

@@ -3,7 +3,7 @@
    Список файлов и хэш BUILD генерирует tools/gen-sw.mjs (проверяется тестом tests/pwa.test.mjs).
    Онлайн-игра (MQTT/WebRTC) идёт мимо воркера: перехватываем только GET своего origin. */
 const VERSION = new URL(self.location.href).searchParams.get('v') || 'dev';
-const BUILD = 'd284349a';   // хэш содержимого файлов (tools/gen-sw.mjs): любое изменение игры меняет байты sw.js, и браузер обновляет кэш
+const BUILD = '97ecea62';   // хэш содержимого файлов (tools/gen-sw.mjs): любое изменение игры меняет байты sw.js, и браузер обновляет кэш
 const CACHE = 'volan-' + VERSION + '-' + BUILD;
 const FILES = /*FILES*/ [
   "./",
@@ -30,6 +30,8 @@ const FILES = /*FILES*/ [
   "./src/net/timing.js",
   "./src/net/transport.js",
   "./src/physics.js",
+  "./src/platform/i18n.js",
+  "./src/platform/index.js",
   "./src/player.js",
   "./src/profile/index.js",
   "./src/pwa.js",

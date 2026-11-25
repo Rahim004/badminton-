@@ -22,6 +22,7 @@
  *   }
  */
 import { COURT } from '../config.js';
+import { t as tl } from '../platform/i18n.js';
 
 export const FONT_DISPLAY = '"Unbounded", "Arial Black", "Segoe UI Black", system-ui, sans-serif';
 
@@ -391,7 +392,7 @@ export function createArena() {
         if (horiz && i >= 1 && i <= 5 && rnd() < 0.5) {
           const k0 = 1 + ((rnd() * (people.length - 7)) | 0);
           const a = people[k0], b = people[k0 + 4];
-          const text = FAN_BANNERS[(rnd() * FAN_BANNERS.length) | 0];
+          const text = tl(FAN_BANNERS[(rnd() * FAN_BANNERS.length) | 0]);
           const col = ['#ff3d6e', '#ffd23f', '#2fc4ff', '#ffffff', '#7a5cff'][(rnd() * 5) | 0];
           row.banners.push({ a, b, text, col, tex: bannerTex(text, col), ph: rnd() * 6 });
         }
@@ -700,6 +701,7 @@ export function createArena() {
     c.fillStyle = 'rgba(0,0,0,0.35)'; c.fillRect(x, 0, 2, h);
   }
   function ledEvent(text, color, life) {
+    text = tl(text);
     const key = text + color;
     if (A.ledEvKey !== key) {
       const cw = (LED_CYCLE + 2) * LED_PX, ch = Math.round(HALL.BOARD_H * LED_PX);

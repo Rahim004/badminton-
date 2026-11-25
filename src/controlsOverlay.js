@@ -16,6 +16,7 @@
  *     view: {w, h, game, project(x,y,z)->{x,y,s}, dt}
  */
 import { TIMING } from './config.js';
+import { t as tl } from './platform/i18n.js';
 
 const FONT = 'system-ui, -apple-system, "Segoe UI", Roboto, sans-serif';
 const ACCENT = '255,210,63';     // жёлтый — основная кнопка
@@ -112,7 +113,7 @@ function drawJoystick(ctx, input, view, humanPlays) {
   ctx.beginPath(); ctx.arc(bx, by, r * 0.4, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = 'rgba(255,255,255,0.5)';
   ctx.font = `600 11px ${FONT}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-  ctx.fillText('бег', bx, by + r + 6);
+  ctx.fillText(tl('бег'), bx, by + r + 6);
 }
 
 // ---------------------------------------------------------------- кнопки
@@ -185,14 +186,14 @@ function drawButtons(ctx, input, game) {
     const ly = b.y + r * (b.main ? 0.16 : 0.2);
     if (twoLine) {
       ctx.font = `800 ${Math.round(fs * 0.86)}px ${FONT}`;
-      ctx.fillText(b.label + '/', b.x, ly - fs * 0.38);
-      ctx.fillText(b.label2, b.x, ly + fs * 0.5);
+      ctx.fillText(tl(b.label) + '/', b.x, ly - fs * 0.38);
+      ctx.fillText(tl(b.label2), b.x, ly + fs * 0.5);
     } else {
-      ctx.fillText(b.label, b.x, ly);
+      ctx.fillText(tl(b.label), b.x, ly);
       if (sub) {
         ctx.font = `600 ${Math.max(9, Math.round(fs * 0.66))}px ${FONT}`;
         ctx.fillStyle = `rgba(${ACCENT},0.95)`;
-        ctx.fillText(sub, b.x, ly + fs * 0.95);
+        ctx.fillText(tl(sub), b.x, ly + fs * 0.95);
       }
     }
     ctx.globalAlpha = 1;
@@ -303,7 +304,7 @@ function drawLegend(ctx, view, game) {
   const fs = 11, lh = 16, pad = 9;
   ctx.font = `600 ${fs}px ${FONT}`;
   let kw = 0, vw = 0;
-  for (const [k, v] of LEGEND) { kw = Math.max(kw, ctx.measureText(k).width); vw = Math.max(vw, ctx.measureText(v).width); }
+  for (const [k, v] of LEGEND) { kw = Math.max(kw, ctx.measureText(tl(k)).width); vw = Math.max(vw, ctx.measureText(tl(v)).width); }
   const w = pad * 2 + kw + 10 + vw, h = pad * 2 + LEGEND.length * lh - 4;
   const x = 12, y = view.h - h - 12;
   ctx.globalAlpha = quiet ? 0.45 : 0.9;
@@ -314,9 +315,9 @@ function drawLegend(ctx, view, game) {
   LEGEND.forEach(([k, v], i) => {
     const yy = y + pad + i * lh + 5;
     ctx.textAlign = 'right'; ctx.fillStyle = `rgba(${ACCENT},0.95)`;
-    ctx.fillText(k, x + pad + kw, yy);
+    ctx.fillText(tl(k), x + pad + kw, yy);
     ctx.textAlign = 'left'; ctx.fillStyle = 'rgba(255,255,255,0.85)';
-    ctx.fillText(v, x + pad + kw + 10, yy);
+    ctx.fillText(tl(v), x + pad + kw + 10, yy);
   });
   ctx.globalAlpha = 1;
 }

@@ -34,6 +34,7 @@ import { createHostDriver } from './host.js';
 import { createGuestView } from './guest.js';
 import { CHARACTER_ORDER, CHARACTERS, MATCH_FORMATS, DIFFICULTY } from '../config.js';
 import { SITE_URL } from '../version.js';
+import { platform } from '../platform/index.js';
 
 export const NET_TEXT = {
   noweb: 'Онлайн-игра работает в версии на GitHub',
@@ -63,8 +64,9 @@ export function roomLink(code) { try { if (/VolanApp/.test(navigator.userAgent))
 export function netAvailable() {
   try {
     if (typeof window === 'undefined' || typeof WebSocket === 'undefined') return false;
+    if (!platform.onlineOk()) return false;
     if (!/^https?:$/.test(location.protocol) && !/VolanApp/.test(navigator.userAgent)) return false;   // exe-приложение открывает игру по volan://
-    if (window.top !== window) return false;       // встроенный просмотрщик (iframe-песочница)
+    if (window.top !== window && !platform.framedNetOk()) return false;       // встроенный просмотрщик (iframe-песочница)
     if (navigator && navigator.onLine === false) return false;
     return true;
   } catch (_) { return false; }

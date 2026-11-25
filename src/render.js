@@ -24,6 +24,7 @@
  *   renderer.hudRect                      — {x,y,w,h} область табло (для UI)
  */
 import { COURT } from './config.js';
+import { t as tl } from './platform/i18n.js';
 import { predictLanding } from './physics.js';
 import { createCharacters } from './render/character.js';
 import { createArena, FONT_DISPLAY } from './render/arena.js';
@@ -151,8 +152,8 @@ export function createRenderer(canvas) {
   function teamName(game, team) {
     const ps = game.players.filter(p => p.team === team);
     const hasHuman = ps.some(p => p.controller === 'human');
-    if (hasHuman) return game.cfg.mode === 'doubles' ? 'Ваша пара' : 'Вы';
-    return ps.map(p => p.name.split(' ')[0]).join(' и ');
+    if (hasHuman) return tl(game.cfg.mode === 'doubles' ? 'Ваша пара' : 'Вы');
+    return ps.map(p => tl(p.name.split(' ')[0])).join(' ' + tl('и') + ' ');
   }
 
   // ---------------------------------------------------------------- вид (камера поверх базы)
@@ -413,7 +414,7 @@ export function createRenderer(canvas) {
     }
     // Матчбол/геймбол — ярлык под табло.
     if (fx.matchPoint || fx.gamePoint) {
-      const txt = fx.matchPoint ? 'МАТЧБОЛ' : 'ГЕЙМБОЛ';
+      const txt = tl(fx.matchPoint ? 'МАТЧБОЛ' : 'ГЕЙМБОЛ');
       ctx.font = `800 10px ${FONT_DISPLAY}`;
       const tw = ctx.measureText(txt).width + 18;
       const pulse = fx.reduced ? 1 : 0.75 + 0.25 * Math.sin(R.time * 6);
@@ -516,8 +517,8 @@ export function createRenderer(canvas) {
       ctx.strokeStyle = '#1b0f3a'; ctx.lineWidth = 2; ctx.lineJoin = 'round';
       ctx.beginPath(); ctx.moveTo(x, y - 8); ctx.lineTo(x - 7, y + 4); ctx.lineTo(x + 7, y + 4); ctx.closePath(); ctx.stroke(); ctx.fill();
       ctx.font = `700 10px ${FONT_DISPLAY}`; ctx.textAlign = 'center'; ctx.textBaseline = 'top';
-      ctx.lineWidth = 3; ctx.strokeText(sh.z.toFixed(1) + ' м', x, y + 7);
-      ctx.fillStyle = '#ffffff'; ctx.fillText(sh.z.toFixed(1) + ' м', x, y + 7);
+      ctx.lineWidth = 3; ctx.strokeText(sh.z.toFixed(1) + tl(' м'), x, y + 7);
+      ctx.fillStyle = '#ffffff'; ctx.fillText(sh.z.toFixed(1) + tl(' м'), x, y + 7);
     }
     ctx.setTransform(R.dpr, 0, 0, R.dpr, 0, 0);
     fx.drawScreen(ctx, R.w, R.h, project);

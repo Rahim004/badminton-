@@ -23,6 +23,8 @@
  *   fx.reduced
  */
 import { FONT_DISPLAY } from './arena.js';
+// Размер надписей «БАХ!», «СМЭШ!» и т. п. — доля меньшей стороны экрана (было 0.12 — мешало игре).
+const CALLOUT_K = 0.062;
 
 export const SHOT_COLORS = {
   smash: '#ff4b3a', clear: '#4fd8ff', lift: '#8fe6ff', drop: '#c08cff', net: '#7cf29c',
@@ -218,7 +220,7 @@ export function createEffects() {
     if (o.plain || o.size < 0.8) { if (FX.callouts.some(c => !c.plain && c.t < 0.5 * c.life)) return; }
     const W = R ? R.w : 400, H = R ? R.h : 800;
     const yMin = (R ? R.hudRect.h : 60) + 40;
-    const size = Math.min(W, H, 560) * 0.12 * (o.size || 1);
+    const size = Math.min(W, H, 560) * CALLOUT_K * (o.size || 1);
     const bw = size * text.length * 0.62 + 20, bh = size * 1.25;
     const cx = o.center ? x : clamp(x + (o.plain ? 0 : 26), bw / 2 + 8, W - bw / 2 - 8);
     let cy = clamp(y - (o.plain ? 18 : 44), yMin, H * 0.72);
@@ -538,11 +540,11 @@ export function createEffects() {
   function drawCallout(ctx, c) {
     const red = FX.reduced;
     const k = c.t / c.life;
-    const base = Math.min(FX.R ? FX.R.w : 400, FX.R ? FX.R.h : 800, 560) * 0.12;
+    const base = Math.min(FX.R ? FX.R.w : 400, FX.R ? FX.R.h : 800, 560) * CALLOUT_K;
     const size = base * c.size;
     const a = k > 0.72 ? (1 - k) / 0.28 : 1;
     const sc = popScale(c.t, red) * (c.stamp && !red && c.t < 0.1 ? 1.6 - c.t * 6 : 1);
-    const rise = red ? 0 : -k * 14;
+    const rise = red ? 0 : -k * 8;
     const jit = !red && c.burst && c.t < 0.22 ? (Math.random() - 0.5) * 4 : 0;
     ctx.save();
     ctx.globalAlpha = a;
@@ -554,7 +556,7 @@ export function createEffects() {
       ctx.rotate(-c.rot * 0.5 + (red ? 0 : c.t * 0.6));
       ctx.font = `900 ${Math.round(size)}px ${FONT_DISPLAY}`;
       const tw = ctx.measureText(c.text).width;
-      burst(ctx, c.center ? Math.max(tw * 0.45, size * 0.9) : Math.max(tw * 0.62, size), c.color === '#ffd23f' ? '#ff4b3a' : '#ffd23f', 11, Math.floor(c.x));
+      burst(ctx, c.center ? Math.max(tw * 0.4, size * 0.8) : Math.max(tw * 0.5, size * 0.85), c.color === '#ffd23f' ? '#ff4b3a' : '#ffd23f', 11, Math.floor(c.x));
       ctx.restore();
     }
     if (c.stars && !red) {
@@ -582,11 +584,11 @@ export function createEffects() {
   function drawBanners(ctx, w, h) {
     const R = FX.R;
     const portrait = h > w * 1.05;
-    let y = h * (portrait ? 0.4 : 0.36);
+    let y = h * (portrait ? 0.2 : 0.22);
     for (const b of FX.banners) {
       const k = b.t / b.life;
       const a = k < 0.1 ? k / 0.1 : k > 0.78 ? (1 - k) / 0.22 : 1;
-      const fs = b.big ? Math.min(w * 0.11, portrait ? 44 : 40) : 22;
+      const fs = b.big ? Math.min(w * 0.065, portrait ? 26 : 24) : 16;
       // Плашка-полоса через экран (влетает слева).
       const slide = FX.reduced ? 1 : clamp(b.t / 0.18, 0, 1);
       ctx.save();
@@ -607,7 +609,7 @@ export function createEffects() {
         drawStyledText(ctx, b.text, fs, b.color);
         if (b.sub) {
           ctx.font = `700 ${Math.round(fs * 0.36)}px ${FONT_DISPLAY}`;
-          ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText(b.sub, 0, fs * 0.78);
+          ctx.lineWidth = 3; ctx.strokeStyle = INK; ctx.strokeText(b.sub, 0, fs * 0.78);
           ctx.fillStyle = '#ffffff'; ctx.fillText(b.sub, 0, fs * 0.78);
         }
       } else {
@@ -615,11 +617,11 @@ export function createEffects() {
         ctx.transform(1, 0, -0.16, 1, 0, 0);
         ctx.font = `800 ${fs}px ${FONT_DISPLAY}`;
         ctx.textAlign = 'center'; ctx.textBaseline = 'middle'; ctx.lineJoin = 'round';
-        ctx.lineWidth = 6; ctx.strokeStyle = INK; ctx.strokeText(b.text, 0, 0);
+        ctx.lineWidth = 4; ctx.strokeStyle = INK; ctx.strokeText(b.text, 0, 0);
         ctx.fillStyle = b.color; ctx.fillText(b.text, 0, 0);
       }
       ctx.restore();
-      y += b.big ? fs * 2.3 : 36;
+      y += b.big ? fs * 2.3 : 26;
     }
     void R;
   }
